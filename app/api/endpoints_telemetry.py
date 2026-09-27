@@ -399,6 +399,8 @@ async def import_telemetry_batch(
 
     for idx, raw_item in enumerate(raw_records):
         try:
+            if "packet_type" not in raw_item and "packetType" not in raw_item:
+                raw_item["packet_type"] = f"{file_type.upper()} Import" if file_type else "JSON Import"
             sealed_packet = normalize_and_seal_telemetry(raw_item, sequence_offset=idx)
             res = await pipeline.process_packet(sealed_packet)
             processed_count += 1

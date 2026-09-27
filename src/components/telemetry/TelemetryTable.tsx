@@ -68,9 +68,21 @@ export const TelemetryTable: React.FC<TelemetryTableProps> = ({
                   >
                     <td className="py-2.5 px-3 font-mono font-bold text-slate-900 flex items-center space-x-1">
                       <span>#{pkt.sequence_num || pkt.packet_id.replace('PKT-', '')}</span>
-                      {pkt.simulated && (
-                        <span className="text-[9px] font-sans px-1 py-0.2 rounded bg-slate-100 text-slate-500 border border-slate-200">
-                          SIM
+                      {pkt.simulated ? (
+                        <span className="text-[9px] font-sans px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-semibold border border-slate-200">
+                          SIMULATOR
+                        </span>
+                      ) : pkt.packet_type?.toUpperCase().includes('CSV') ? (
+                        <span className="text-[9px] font-sans px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 font-semibold border border-amber-200">
+                          CSV
+                        </span>
+                      ) : pkt.packet_type?.toUpperCase().includes('JSON') ? (
+                        <span className="text-[9px] font-sans px-1.5 py-0.2 rounded bg-sky-100 text-sky-800 font-semibold border border-sky-200">
+                          JSON
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-sans px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 font-semibold border border-indigo-200">
+                          IMPORTED
                         </span>
                       )}
                     </td>

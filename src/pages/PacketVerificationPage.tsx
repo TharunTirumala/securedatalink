@@ -94,8 +94,25 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
                   }`}
                 >
                   <div>
-                    <div className="font-mono font-bold text-xs text-slate-900">
-                      {pkt.packet_id}
+                    <div className="flex items-center space-x-1.5">
+                      <span className="font-mono font-bold text-xs text-slate-900">{pkt.packet_id}</span>
+                      {pkt.simulated ? (
+                        <span className="text-[9px] font-sans px-1 py-0.2 rounded bg-slate-100 text-slate-600 font-semibold border border-slate-200">
+                          SIM
+                        </span>
+                      ) : pkt.packet_type?.toUpperCase().includes('CSV') ? (
+                        <span className="text-[9px] font-sans px-1 py-0.2 rounded bg-amber-100 text-amber-800 font-semibold border border-amber-200">
+                          CSV
+                        </span>
+                      ) : pkt.packet_type?.toUpperCase().includes('JSON') ? (
+                        <span className="text-[9px] font-sans px-1 py-0.2 rounded bg-sky-100 text-sky-800 font-semibold border border-sky-200">
+                          JSON
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-sans px-1 py-0.2 rounded bg-indigo-100 text-indigo-800 font-semibold border border-indigo-200">
+                          IMP
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-slate-500">{pkt.source}</div>
                   </div>
@@ -116,8 +133,27 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
             <div className="flex items-center justify-between pb-4 border-b border-slate-200">
               <div>
                 <span className="text-[11px] font-mono text-slate-400 uppercase font-semibold">Active Frame</span>
-                <h2 className="text-lg font-bold text-slate-900 font-mono">{activePacket.packet_id}</h2>
-                <div className="text-xs text-slate-500">
+                <div className="flex items-center space-x-2">
+                  <h2 className="text-lg font-bold text-slate-900 font-mono">{activePacket.packet_id}</h2>
+                  {activePacket.simulated ? (
+                    <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-bold border border-slate-200">
+                      SIMULATOR SOURCE
+                    </span>
+                  ) : activePacket.packet_type?.toUpperCase().includes('CSV') ? (
+                    <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold border border-amber-200">
+                      CSV IMPORTED
+                    </span>
+                  ) : activePacket.packet_type?.toUpperCase().includes('JSON') ? (
+                    <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-sky-100 text-sky-800 font-bold border border-sky-200">
+                      JSON IMPORTED
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-sans px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">
+                      IMPORTED TELEMETRY
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
                   Node: <span className="font-semibold text-slate-700">{activePacket.source}</span> • Key ID: <span className="font-mono text-sky-700 font-semibold">{activePacket.key_id}</span>
                 </div>
               </div>

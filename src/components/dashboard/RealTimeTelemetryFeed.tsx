@@ -83,9 +83,21 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
                     <td className="py-3 px-4 font-medium text-slate-700 whitespace-nowrap truncate">
                       <div className="flex items-center space-x-1.5">
                         <span className="truncate">{pkt.source}</span>
-                        {(pkt.simulated === false || pkt.packet_type === "Custom Telemetry") && (
+                        {pkt.simulated ? (
+                          <span className="text-[9px] font-sans px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold border border-slate-200 shrink-0">
+                            SIMULATOR
+                          </span>
+                        ) : pkt.packet_type?.toUpperCase().includes('CSV') ? (
+                          <span className="text-[9px] font-sans px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold border border-amber-200 shrink-0">
+                            CSV
+                          </span>
+                        ) : pkt.packet_type?.toUpperCase().includes('JSON') ? (
+                          <span className="text-[9px] font-sans px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 font-bold border border-sky-200 shrink-0">
+                            JSON
+                          </span>
+                        ) : (
                           <span className="text-[9px] font-sans px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200 shrink-0">
-                            CUSTOM
+                            IMPORTED
                           </span>
                         )}
                       </div>
