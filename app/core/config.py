@@ -3,27 +3,18 @@ import os
 from pydantic import BaseModel, Field
 
 # Base Directory paths
-if os.environ.get("VERCEL"):
-    BASE_DIR = Path("/tmp")
-    DATA_DIR = BASE_DIR / "data"
-else:
-    BASE_DIR = Path(__file__).resolve().parent.parent
-    DATA_DIR = BASE_DIR / "data"
-
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = BACKEND_DIR.parent
+DATA_DIR = BASE_DIR / "data"
 INCOMING_DIR = DATA_DIR / "incoming"
 PROCESSED_DIR = DATA_DIR / "processed"
 ARCHIVE_DIR = DATA_DIR / "archive"
-SAMPLES_DIR = BASE_DIR / "data" / "samples"
+SAMPLES_DIR = DATA_DIR / "samples"
 DB_PATH = DATA_DIR / "securelink.db"
 
 # Ensure directories exist
-for directory in [DATA_DIR, INCOMING_DIR, PROCESSED_DIR, ARCHIVE_DIR]:
+for directory in [DATA_DIR, INCOMING_DIR, PROCESSED_DIR, ARCHIVE_DIR, SAMPLES_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
-if not SAMPLES_DIR.exists():
-    try:
-        SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
 
 class Settings(BaseModel):
     APP_NAME: str = "SecureLink - Tactical Datalink System"
@@ -39,10 +30,10 @@ class Settings(BaseModel):
     DB_PATH: Path = DB_PATH
 
     # Network & Ingestion
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
-    UDP_HOST: str = "0.0.0.0"
-    UDP_PORT: int = 9871
+    HOST: str = os.environ.get("HOST", "0.0.0.0")
+    PORT: int = int(os.environ.get("PORT", 8000))
+    UDP_HOST: str = os.environ.get("UDP_HOST", "0.0.0.0")
+    UDP_PORT: int = int(os.environ.get("UDP_PORT", 9871))
     
     # Cryptographic Pipeline parameters
     FRESHNESS_WINDOW_SECONDS: float = 5.0

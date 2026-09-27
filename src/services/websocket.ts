@@ -33,12 +33,6 @@ class WebSocketClient {
       return;
     }
 
-    // In pure HTTPS environments without backend, gracefully start internal simulation
-    if (window.location.protocol === 'https:' && !import.meta.env.VITE_WS_URL) {
-      this.startInternalSimulation();
-      return;
-    }
-
     this.isConnecting = true;
     try {
       this.ws = new WebSocket(this.url);

@@ -50,41 +50,42 @@ INPUT
 
 ---
 
-## 2. Directory Structure (Unified Full-Stack)
+## 2. Directory Structure
 
 ```
 securelink/
-├── api/
-│   └── index.py            # Vercel Python Serverless ASGI entrypoint
-├── app/
-│   ├── api/                # REST & WebSocket endpoints
-│   ├── core/               # Configuration, paths, logging
-│   ├── crypto/             # AES-256-GCM, ECDSA P-256, SHA-256, KeyManager
-│   ├── database/           # SQLAlchemy models and SQLite connection
-│   ├── ingestion/          # Continuous file watcher, UDP receiver, Simulator
-│   ├── processing/         # Pipeline orchestrator, Freshness, TrustScore, Filter
-│   ├── schemas/            # Pydantic data schemas
-│   ├── services/           # Audit logger, C2 output, WebSocket manager
-│   └── main.py             # FastAPI core application
-├── src/                    # React 19 + TypeScript + Tailwind CSS Frontend
-│   ├── components/         # TopNav, Sidebar, Pipeline, StatCard, Modals, Tables
-│   ├── pages/              # Dashboard, LiveTelemetry, Verification, Threats, etc.
-│   ├── services/           # REST API, WebSocket client & Tactical Simulation Fallback
-│   └── types/              # TypeScript telemetry interfaces
-├── public/                 # Favicons, icons, and SVG assets
+├── backend/
+│   ├── app/
+│   │   ├── api/            # REST and WebSocket endpoints
+│   │   ├── core/           # Configuration, paths, logging
+│   │   ├── crypto/         # AES-256-GCM, ECDSA P-256, SHA-256, KeyManager
+│   │   ├── database/       # SQLAlchemy models and SQLite connection
+│   │   ├── ingestion/      # Continuous file watcher, UDP receiver, Simulator
+│   │   ├── processing/     # Pipeline orchestrator, Freshness, TrustScore, Filter
+│   │   ├── schemas/        # Pydantic data schemas
+│   │   └── services/       # Audit logger, C2 output, WebSocket manager
+│   ├── requirements.txt    # Python backend dependencies
+│   └── run.py              # Backend entrypoint launcher
+├── frontend/
+│   ├── src/
+│   │   ├── components/     # TopNav, Sidebar, Pipeline, StatCard, Modals, Tables
+│   │   ├── pages/          # Dashboard, LiveTelemetry, Verification, Threats, Logs, Keys, Architecture, Archive
+│   │   ├── services/       # REST API and WebSocket clients
+│   │   └── types/          # TypeScript interfaces
+│   ├── package.json
+│   └── vite.config.ts
 ├── data/
-│   └── samples/            # Pre-generated sample authentic & tampered telemetry vectors
+│   ├── incoming/           # Continuous file watcher directory (.json, .jsonl, .csv)
+│   ├── processed/          # Automatically moved and archived processed files
+│   ├── archive/            # Long-term historical data
+│   ├── samples/            # Pre-generated sample authentic & tampered files
+│   └── securelink.db       # Persistent SQLite database (survives restarts)
 ├── scripts/
-│   ├── generate_sample_file.py # Utility to drop test telemetry into data/incoming
-│   └── verify_acceptance_test.py # Automated end-to-end verification
+│   ├── start_backend.bat   # Windows launcher for backend
+│   ├── start_frontend.bat  # Windows launcher for frontend
+│   ├── start_all.bat       # Launcher for both services
+│   └── generate_sample_file.py # Utility to drop test telemetry into data/incoming
 ├── tests/                  # Pytest unit and integration test suite
-├── index.html              # Frontend HTML entrypoint
-├── package.json            # Unified dependencies and build scripts
-├── requirements.txt        # Python backend dependencies
-├── run.py                  # Local FastAPI server runner
-├── start.bat               # 1-click unified launcher for both backend & frontend
-├── vercel.json             # Zero-config Vercel deployment & routing rewrites
-├── vite.config.ts          # Vite build config
 └── README.md
 ```
 
@@ -93,38 +94,47 @@ securelink/
 ## 3. Installation & Setup
 
 ### Prerequisites
-- Python 3.11+
-- Node.js v18+ & npm
+- Python 3.11+ (Python 3.14 verified)
+- Node.js v18+ (Node v22 verified) & npm
 
-### Setup
+### Backend Setup
 ```powershell
-# 1. Install frontend dependencies
-npm install
-
-# 2. Install backend dependencies
+cd backend
 python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+### Frontend Setup
+```powershell
+cd frontend
+npm install
 ```
 
 ---
 
 ## 4. Running the System
 
-### Option A: 1-Click Launch (Windows)
-Double-click `start.bat` or run:
+### Option A: Using Windows Scripts
+Run `scripts/start_all.bat` or run each in a separate terminal:
 ```powershell
-.\start.bat
+# Terminal 1: Backend
+.\scripts\start_backend.bat
+
+# Terminal 2: Frontend
+.\scripts\start_frontend.bat
 ```
-This automatically boots both the FastAPI backend (port 8000) and the Vite frontend (port 5173).
 
 ### Option B: Manual Execution
 ```powershell
 # Terminal 1: Backend
+cd backend
+.\venv\Scripts\activate
 python run.py
 # Server runs on http://127.0.0.1:8000
 
 # Terminal 2: Frontend
+cd frontend
 npm run dev
 # Dashboard opens on http://localhost:5173
 ```
@@ -226,21 +236,3 @@ All 14 tests verify:
 - Deterministic 0-100 Trust Score engine breakdown.
 - Continuous file watcher detection and automatic archiving.
 - API endpoints and strict secret key masking.
-
----
-
-## 10. Deploying to Vercel
-
-SecureLink is fully unified for zero-configuration, 1-click deployment on Vercel with both frontend and backend integrated.
-
-### Zero-Config Deployment
-1. Go to your [Vercel Dashboard](https://vercel.com/dashboard) and click **"Add New... -> Project"**.
-2. Select your repository: `TharunTirumala/securedatalink`.
-3. Leave all settings at their defaults (Root Directory: `./`).
-4. Click **Deploy**.
-
-Vercel will automatically:
-- Detect the Vite React frontend at the root and build it via `npm run build`.
-- Detect the Python FastAPI serverless application at `api/index.py` using `requirements.txt`.
-- Configure `vercel.json` routing so all `/api/*` requests go directly to the FastAPI serverless API, and all other routes go to the React SPA with zero Mixed-Content or CORS issues.
-- Provide client-side tactical telemetry simulation fallback directly in the browser if running disconnected from a live network feed.

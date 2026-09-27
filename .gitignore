@@ -1,6 +1,5 @@
 # Python
 venv/
-backend/
 backend/venv/
 __pycache__/
 *.py[cod]
@@ -13,8 +12,6 @@ htmlcov/
 # Node / Frontend
 node_modules/
 frontend/node_modules/
-dist/
-frontend/dist/
 dist-ssr/
 *.local
 npm-debug.log*
@@ -27,7 +24,6 @@ data/*.sqlite
 data/*.sqlite3
 data/processed/*.json
 data/processed/*.csv
-app/data/
 
 # Logs & Environment
 logs/
@@ -42,6 +38,3 @@ logs/
 Thumbs.db
 *.swp
 *.bak
-
-# Upload scripts / tokens
-scripts/github_push.py
