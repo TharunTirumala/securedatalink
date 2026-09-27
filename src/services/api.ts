@@ -223,30 +223,6 @@ export const api = {
     return await res.json();
   },
 
-  async applyOverride(freshnessWindow: number, operatorId: string = 'OPERATOR-PRIMARY', passcode: string = ''): Promise<any> {
-    const res = await fetch(`${API_BASE}/operator/override`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        freshness_window: freshnessWindow,
-        operator_id: operatorId,
-        passcode: passcode
-      })
-    });
-    if (!res.ok) {
-      let errorMsg = `Security override rejected (HTTP ${res.status})`;
-      try {
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          const data = await res.json();
-          if (data.detail) errorMsg = data.detail;
-        }
-      } catch {}
-      throw new Error(errorMsg);
-    }
-    return await res.json();
-  },
-
   async getSimulatorConfig(): Promise<SimulatorConfig> {
     try {
       const res = await fetch(`${API_BASE}/operator/simulator`);
@@ -270,40 +246,6 @@ export const api = {
       if (res.ok) return await res.json();
     } catch (e) {}
     return { status: 'UPDATED', config };
-  },
-
-  async getOperatorActions(): Promise<any[]> {
-    try {
-      const res = await fetch(`${API_BASE}/operator/actions`);
-      if (res.ok) {
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) return await res.json();
-      }
-    } catch (e) {}
-    return [];
-  },
-
-  async clearReplayCache(passcode: string, operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
-    const res = await fetch(`${API_BASE}/operator/cache/clear`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        operator_id: operatorId,
-        passcode: passcode
-      })
-    });
-    if (!res.ok) {
-      let errorMsg = `Replay cache flush rejected (HTTP ${res.status})`;
-      try {
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          const data = await res.json();
-          if (data.detail) errorMsg = data.detail;
-        }
-      } catch {}
-      throw new Error(errorMsg);
-    }
-    return await res.json();
   },
 
   // Archive & Audit

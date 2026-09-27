@@ -153,7 +153,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   const isStreamPaused = demoState === 'PAUSED';
   const isTelemetryReceiving = demoState === 'RUNNING';
-  const totalProcessed = stats?.adaptive_filter?.evaluated ?? (stats ? stats.authenticated_packets + stats.replay_filtered : packets.length);
+  const totalProcessed = stats?.total_packets ?? (stats?.adaptive_filter?.evaluated ?? (stats ? stats.authenticated_packets + stats.replay_filtered : packets.length));
   const trustScore = stats ? stats.trust_score : (packets[0]?.trust_score ?? 100);
   const threatsBlocked = stats ? stats.replay_filtered : threats.filter(t => t.action === 'BLOCKED').length;
 

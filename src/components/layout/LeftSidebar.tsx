@@ -6,7 +6,6 @@ import {
   ShieldAlert,
   ScrollText,
   KeyRound,
-  SlidersHorizontal,
   Archive,
   TerminalSquare
 } from 'lucide-react';
@@ -37,12 +36,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       items: [
         { id: 'logs', label: 'Audit History', icon: ScrollText },
         { id: 'keys', label: 'Key Management', icon: KeyRound },
-      ]
-    },
-    {
-      title: 'CONTROL',
-      items: [
-        { id: 'override', label: 'Operator Control', icon: SlidersHorizontal },
         { id: 'archive', label: 'Tactical Data Archive', icon: Archive },
       ]
     }

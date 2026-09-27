@@ -17,7 +17,6 @@ import { PacketVerificationPage } from './pages/PacketVerificationPage';
 import { ThreatDetectionPage } from './pages/ThreatDetectionPage';
 import { SecurityLogsPage } from './pages/SecurityLogsPage';
 import { KeyManagementPage } from './pages/KeyManagementPage';
-import { OperatorOverridePage } from './pages/OperatorOverridePage';
 import { DataArchivePage } from './pages/DataArchivePage';
 
 export const App: React.FC = () => {
@@ -66,7 +65,7 @@ export const App: React.FC = () => {
       if (!wsConnected || stats?.demo_state === 'RUNNING') {
         loadInitialData();
       }
-    }, wsConnected ? 3000 : 2500);
+    }, wsConnected ? 4000 : 2500);
 
     return () => clearInterval(interval);
   }, [wsConnected, stats?.demo_state, loadInitialData]);
@@ -87,18 +86,20 @@ export const App: React.FC = () => {
       setStats((prev) => {
         if (!prev) return prev;
         const isAuth = newPacket.action === 'ACCEPTED';
-        const isDrop = newPacket.action === 'BLOCKED' || newPacket.action === 'REJECTED';
+        const isDrop = newPacket.action === 'BLOCKED' || newPacket.action === 'REJECTED' || newPacket.action === 'FILTERED';
+        const prevTotal = prev.total_packets ?? (prev.authenticated_packets + prev.replay_filtered);
         return {
           ...prev,
+          total_packets: prevTotal + 1,
           authenticated_packets: prev.authenticated_packets + (isAuth ? 1 : 0),
           replay_filtered: prev.replay_filtered + (isDrop ? 1 : 0),
           adaptive_filter: {
             ...prev.adaptive_filter,
-            evaluated: prev.adaptive_filter.evaluated + 1,
-            accepted: prev.adaptive_filter.accepted + (isAuth ? 1 : 0),
-            blocked: prev.adaptive_filter.blocked + (newPacket.action === 'BLOCKED' ? 1 : 0),
-            replay: prev.adaptive_filter.replay + (newPacket.classification === 'REPLAYED' ? 1 : 0),
-            tampered: prev.adaptive_filter.tampered + (newPacket.classification === 'TAMPERED' ? 1 : 0),
+            evaluated: (prev.adaptive_filter?.evaluated ?? 0) + 1,
+            accepted: (prev.adaptive_filter?.accepted ?? 0) + (isAuth ? 1 : 0),
+            blocked: (prev.adaptive_filter?.blocked ?? 0) + (newPacket.action === 'BLOCKED' ? 1 : 0),
+            replay: (prev.adaptive_filter?.replay ?? 0) + (newPacket.classification === 'REPLAYED' ? 1 : 0),
+            tampered: (prev.adaptive_filter?.tampered ?? 0) + (newPacket.classification === 'TAMPERED' ? 1 : 0),
           }
         };
       });
@@ -192,10 +193,6 @@ export const App: React.FC = () => {
               keyMetadata={keyMetadata}
               onRefreshData={loadInitialData}
             />
-          )}
-
-          {activeTab === 'override' && (
-            <OperatorOverridePage />
           )}
 
           {activeTab === 'archive' && (

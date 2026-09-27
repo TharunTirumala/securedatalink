@@ -81,6 +81,7 @@ export interface SecurityLog {
 }
 
 export interface DashboardStats {
+  total_packets?: number;
   authenticated_packets: number;
   packet_rate: number;
   packet_latency: number;

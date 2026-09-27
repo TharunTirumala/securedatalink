@@ -73,6 +73,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     c2_stats = c2_service.get_status()
 
     return {
+        "total_packets": total_packets,
         "authenticated_packets": authenticated_packets,
         "packet_rate": packet_rate,
         "packet_latency": avg_latency,
