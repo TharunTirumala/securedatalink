@@ -60,6 +60,17 @@ export const App: React.FC = () => {
     loadInitialData();
   }, [loadInitialData]);
 
+  // Periodic polling synchronization for cloud/serverless environments without WebSocket
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!wsConnected || stats?.demo_state === 'RUNNING') {
+        loadInitialData();
+      }
+    }, wsConnected ? 3000 : 2500);
+
+    return () => clearInterval(interval);
+  }, [wsConnected, stats?.demo_state, loadInitialData]);
+
   // WebSocket Subscription for Real-Time Event Dispatching
   useEffect(() => {
     const unsubConn = wsClient.on('connection_change', (data) => {
