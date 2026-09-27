@@ -10,24 +10,33 @@ from app.ingestion.file_watcher import file_watcher
 from app.ingestion.simulator import simulator
 from app.ingestion.udp_receiver import udp_receiver
 
+import os
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Initializing SecureLink Cyber-Secure Tactical Datalink System...")
     await init_db()
-    await file_watcher.start()
-    await simulator.start()
-    await udp_receiver.start()
-    logger.info("SecureLink backend services started successfully.")
+    
+    # Only launch persistent background daemons when running locally/dedicated server, not on Vercel serverless
+    is_serverless = bool(os.environ.get("VERCEL"))
+    if not is_serverless:
+        await file_watcher.start()
+        await simulator.start()
+        await udp_receiver.start()
+        logger.info("SecureLink background telemetry ingestion daemons started.")
+    else:
+        logger.info("Running in Vercel Serverless environment. Database initialized.")
     
     yield
     
     # Shutdown
-    logger.info("Shutting down SecureLink backend services...")
-    await simulator.stop()
-    await file_watcher.stop()
-    await udp_receiver.stop()
-    logger.info("SecureLink shutdown complete.")
+    if not is_serverless:
+        logger.info("Shutting down SecureLink backend services...")
+        await simulator.stop()
+        await file_watcher.stop()
+        await udp_receiver.stop()
+        logger.info("SecureLink shutdown complete.")
 
 app = FastAPI(
     title=settings.APP_NAME,

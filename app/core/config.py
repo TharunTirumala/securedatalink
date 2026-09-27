@@ -3,18 +3,27 @@ import os
 from pydantic import BaseModel, Field
 
 # Base Directory paths
-BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
-BASE_DIR = BACKEND_DIR.parent
-DATA_DIR = BASE_DIR / "data"
+if os.environ.get("VERCEL"):
+    BASE_DIR = Path("/tmp")
+    DATA_DIR = BASE_DIR / "data"
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
+    DATA_DIR = BASE_DIR / "data"
+
 INCOMING_DIR = DATA_DIR / "incoming"
 PROCESSED_DIR = DATA_DIR / "processed"
 ARCHIVE_DIR = DATA_DIR / "archive"
-SAMPLES_DIR = DATA_DIR / "samples"
+SAMPLES_DIR = BASE_DIR / "data" / "samples"
 DB_PATH = DATA_DIR / "securelink.db"
 
 # Ensure directories exist
-for directory in [DATA_DIR, INCOMING_DIR, PROCESSED_DIR, ARCHIVE_DIR, SAMPLES_DIR]:
+for directory in [DATA_DIR, INCOMING_DIR, PROCESSED_DIR, ARCHIVE_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
+if not SAMPLES_DIR.exists():
+    try:
+        SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 class Settings(BaseModel):
     APP_NAME: str = "SecureLink - Tactical Datalink System"

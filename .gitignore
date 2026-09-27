@@ -1,5 +1,6 @@
 # Python
 venv/
+backend/
 backend/venv/
 __pycache__/
 *.py[cod]
@@ -26,6 +27,7 @@ data/*.sqlite
 data/*.sqlite3
 data/processed/*.json
 data/processed/*.csv
+app/data/
 
 # Logs & Environment
 logs/
