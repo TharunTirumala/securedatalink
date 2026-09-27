@@ -236,3 +236,25 @@ All 14 tests verify:
 - Deterministic 0-100 Trust Score engine breakdown.
 - Continuous file watcher detection and automatic archiving.
 - API endpoints and strict secret key masking.
+
+---
+
+## 10. Deploying to Vercel
+
+SecureLink is configured for zero-configuration deployment to Vercel.
+
+### Option A: Automatic Import (Default)
+1. Go to your [Vercel Dashboard](https://vercel.com/dashboard) and click **"Add New... -> Project"**.
+2. Select the `securedatalink` repository.
+3. Keep the default settings (Root Directory as `./`).
+4. Click **Deploy**. The root `vercel.json` and `package.json` automatically install dependencies, build the frontend via Vite, and output the production build.
+
+### Option B: Monorepo / Subdirectory Setting
+If you prefer pointing Vercel directly to the frontend:
+1. In Vercel Project Settings, set **Root Directory** to `frontend`.
+2. Framework Preset will auto-detect **Vite**.
+3. Click **Deploy**.
+
+> [!NOTE]
+> When deployed as a static web app on Vercel without a live backend connection, SecureLink automatically enables its **Tactical Simulation Fallback Engine**, providing full interactive live telemetry streams, crypto status, trust scores, and operator controls directly in the browser.
+> To connect a production backend, set the `VITE_API_URL` and `VITE_WS_URL` environment variables in your Vercel Project Settings.
