@@ -70,6 +70,9 @@ async def test_operator_override_authorization_and_persistence():
 @pytest.mark.asyncio
 async def test_pause_resume_stream_and_packet_filtering():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # Start demo first so state is RUNNING
+        await ac.post("/api/v1/operator/start?operator_id=OPERATOR-PRIMARY")
+
         # 1. Pause stream
         res_pause = await ac.post("/api/v1/operator/pause?operator_id=OPERATOR-PRIMARY")
         assert res_pause.status_code == 200
@@ -510,5 +513,58 @@ async def test_import_telemetry_json_and_csv_batches():
         assert mixed_data["total_records"] == 2
         assert mixed_data["accepted_count"] == 1
         assert mixed_data["failed_count"] == 1
+
+@pytest.mark.asyncio
+async def test_strict_state_machine_invalid_transitions():
+    """
+    Verifies that invalid state transitions are properly rejected or handled idempotently:
+    - STOPPED -> PAUSE rejects with 400
+    - STOPPED -> RESUME rejects with 400
+    - RUNNING -> START is idempotent
+    - PAUSED -> PAUSE is idempotent
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # 1. Stop demo to guarantee STOPPED state
+        await ac.post("/api/v1/operator/stop?operator_id=OPERATOR-PRIMARY")
+
+        # 2. Reject pause when STOPPED
+        res_pause_stopped = await ac.post("/api/v1/operator/pause?operator_id=OPERATOR-PRIMARY")
+        assert res_pause_stopped.status_code == 400
+        assert "Cannot pause" in res_pause_stopped.json()["detail"]
+
+        # 3. Reject resume when STOPPED
+        res_resume_stopped = await ac.post("/api/v1/operator/resume?operator_id=OPERATOR-PRIMARY")
+        assert res_resume_stopped.status_code == 400
+        assert "Cannot resume" in res_resume_stopped.json()["detail"]
+
+        # 4. Start demo -> RUNNING
+        res_start = await ac.post("/api/v1/operator/start?operator_id=OPERATOR-PRIMARY")
+        assert res_start.status_code == 200
+        assert res_start.json()["demo_state"] == "RUNNING"
+
+        # 5. Duplicate start while RUNNING -> idempotent
+        res_dup_start = await ac.post("/api/v1/operator/start?operator_id=OPERATOR-PRIMARY")
+        assert res_dup_start.status_code == 200
+        assert res_dup_start.json()["demo_state"] == "RUNNING"
+
+        # 6. Pause demo -> PAUSED
+        res_pause = await ac.post("/api/v1/operator/pause?operator_id=OPERATOR-PRIMARY")
+        assert res_pause.status_code == 200
+        assert res_pause.json()["demo_state"] == "PAUSED"
+
+        # 7. Duplicate pause while PAUSED -> idempotent
+        res_dup_pause = await ac.post("/api/v1/operator/pause?operator_id=OPERATOR-PRIMARY")
+        assert res_dup_pause.status_code == 200
+        assert res_dup_pause.json()["demo_state"] == "PAUSED"
+
+        # 8. Resume -> RUNNING
+        res_resume = await ac.post("/api/v1/operator/resume?operator_id=OPERATOR-PRIMARY")
+        assert res_resume.status_code == 200
+        assert res_resume.json()["demo_state"] == "RUNNING"
+
+        # 9. Stop -> STOPPED
+        res_stop = await ac.post("/api/v1/operator/stop?operator_id=OPERATOR-PRIMARY")
+        assert res_stop.status_code == 200
+        assert res_stop.json()["demo_state"] == "STOPPED"
 
 

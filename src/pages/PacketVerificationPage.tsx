@@ -75,7 +75,7 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
 
       {packets.length === 0 ? (
         <div className="p-12 text-center bg-white border border-slate-200 rounded-lg text-slate-400 text-sm">
-          No packets available to verify. Please enable Simulated Demonstration Mode or submit a telemetry packet.
+          No packets processed yet. Click Start Demo to begin.
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

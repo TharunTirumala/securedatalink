@@ -46,17 +46,18 @@ async def lifespan(app: FastAPI):
         _initialized = True
 
     is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
-    if not is_serverless:
+    is_testing = bool(os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING"))
+    if not is_serverless and not is_testing:
         await file_watcher.start()
         await simulator.start()
         await udp_receiver.start()
         logger.info("SecureLink backend services started successfully.")
     else:
-        logger.info("SecureLink running in serverless environment.")
+        logger.info("SecureLink running in test or serverless environment.")
     
     yield
     
-    if not is_serverless:
+    if not is_serverless and not is_testing:
         logger.info("Shutting down SecureLink backend services...")
         await simulator.stop()
         await file_watcher.stop()

@@ -176,7 +176,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
                 demoState === 'PAUSED' ? 'bg-amber-500' : demoState === 'RUNNING' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
               }`}></span>
-              {demoState === 'PAUSED' ? 'DEMO PAUSED' : demoState === 'RUNNING' ? 'ONLINE' : 'STANDBY'}
+              {demoState === 'PAUSED' ? 'PAUSED' : demoState === 'RUNNING' ? 'RUNNING' : 'STOPPED'}
             </span>
           </div>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
@@ -269,7 +269,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               demoState === 'PAUSED' ? 'bg-amber-500 animate-pulse' : demoState === 'RUNNING' ? 'bg-emerald-500' : 'bg-slate-400'
             }`}></span>
             <span className="text-sm font-bold text-slate-800">
-              {demoState === 'PAUSED' ? 'PAUSED' : demoState === 'RUNNING' ? 'ONLINE' : 'STANDBY'}
+              {demoState === 'PAUSED' ? 'PAUSED' : demoState === 'RUNNING' ? 'ONLINE' : 'STOPPED'}
             </span>
           </div>
         </div>

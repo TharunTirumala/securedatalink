@@ -52,7 +52,7 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
             {latestTen.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-8 text-center text-slate-400">
-                  Awaiting incoming telemetry packets... Click "START DEMO" above to simulate live datalink.
+                  No packets processed yet. Click Start Demo to begin.
                 </td>
               </tr>
             ) : (

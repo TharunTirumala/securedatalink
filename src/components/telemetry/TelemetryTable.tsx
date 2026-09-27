@@ -50,7 +50,7 @@ export const TelemetryTable: React.FC<TelemetryTableProps> = ({
             {displayPackets.length === 0 ? (
               <tr>
                 <td colSpan={10} className="py-8 text-center text-slate-400">
-                  No telemetry packets processed yet. Waiting for incoming stream...
+                  No packets processed yet. Click Start Demo to begin.
                 </td>
               </tr>
             ) : (

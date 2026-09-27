@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.pool import NullPool
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -7,6 +8,7 @@ Base = declarative_base()
 
 engine = create_async_engine(
     settings.DATABASE_URL,
+    poolclass=NullPool,
     echo=False,
     future=True
 )
@@ -43,43 +45,16 @@ async def init_db():
         await conn.run_sync(migrate_schema)
     logger.info("Persistent SQLite database initialized and verified.")
 
-    # Seed operational data if persistent store is brand new
+    # Seed minimal system state if not present
     try:
-        from datetime import datetime, timezone
-        from sqlalchemy import func, select
-        from app.database.models import SecurityLogRecord, OperatorActionRecord, PacketRecord
-        
+        from app.database.models import SystemStateRecord
         async with async_session() as session:
-            log_count = await session.scalar(select(func.count(SecurityLogRecord.id)))
-            if log_count == 0:
-                now = datetime.now(timezone.utc)
-                session.add(SecurityLogRecord(
-                    timestamp=now,
-                    event_type="SYSTEM_STARTUP",
-                    severity="INFO",
-                    source="SYSTEM",
-                    description="SecureLink Tactical Datalink System online. Cryptographic core initialized.",
-                    details={"engine": "AES-256-GCM / ECDSA NIST P-256", "status": "NOMINAL"}
-                ))
-                session.add(OperatorActionRecord(
-                    timestamp=now,
-                    operator_id="OPERATOR-PRIMARY",
-                    action="INITIALIZE_TACTICAL_CONTROLS",
-                    confirmed=True,
-                    status="SUCCESS",
-                    details={"scope": "TACTICAL_LINK_READY"}
-                ))
+            state = await session.get(SystemStateRecord, "demo_state")
+            if not state:
+                session.add(SystemStateRecord(key="demo_state", value="STOPPED"))
                 await session.commit()
-
-            pkt_count = await session.scalar(select(func.count(PacketRecord.id)))
-            if pkt_count == 0:
-                from app.ingestion.simulator import simulator
-                from app.processing.pipeline import pipeline
-                for _ in range(6):
-                    pkt = simulator._generate_packet()
-                    await pipeline.process_packet(pkt)
     except Exception as e:
-        logger.warning(f"Note on initial seed: {e}")
+        logger.warning(f"Note on initial system state check: {e}")
 
 async def get_system_state(key: str, default: str = None) -> str:
     """Retrieves a persistent system state value."""

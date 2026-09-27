@@ -62,16 +62,15 @@ export const api = {
       const res = await fetch(`${API_BASE}/telemetry/packets?${query.toString()}`);
       if (res.ok) return await res.json();
     } catch (e) {}
-    return INITIAL_PACKETS;
+    return [];
   },
 
-  async getPacketDetails(packetId: string): Promise<Packet> {
+  async getPacketDetails(packetId: string): Promise<Packet | null> {
     try {
       const res = await fetch(`${API_BASE}/telemetry/packets/${encodeURIComponent(packetId)}`);
       if (res.ok) return await res.json();
     } catch (e) {}
-    const found = INITIAL_PACKETS.find(p => p.packet_id === packetId);
-    return found || INITIAL_PACKETS[0];
+    return null;
   },
 
   async ingestPacket(rawPacket: any): Promise<any> {
@@ -138,7 +137,7 @@ export const api = {
       const res = await fetch(`${API_BASE}/telemetry/c2-stream`);
       if (res.ok) return await res.json();
     } catch (e) {}
-    return { stream: INITIAL_PACKETS.filter(p => p.action === 'ACCEPTED') };
+    return { status: 'STANDBY', forwarded_count: 0, recent_packets: [] };
   },
 
   // Threat Detection
@@ -152,7 +151,7 @@ export const api = {
       const res = await fetch(`${API_BASE}/threats?${query.toString()}`);
       if (res.ok) return await res.json();
     } catch (e) {}
-    return INITIAL_THREATS;
+    return [];
   },
 
   // Key Management

@@ -42,8 +42,19 @@ async def get_operator_status():
 async def start_demo(operator_id: str = "OPERATOR-PRIMARY"):
     """
     Starts simulated demonstration mode with fresh sequence counters.
-    Authoritative state transition -> RUNNING.
+    Authoritative state transition: STOPPED -> RUNNING.
+    Protects against duplicate simulator instances.
     """
+    current_state = await get_system_state("demo_state", "STOPPED")
+    if current_state == "RUNNING" and simulator.enabled and not pipeline.stream_paused:
+        # Already running; avoid duplicate creation
+        return {
+            "status": "RUNNING",
+            "demo_state": "RUNNING",
+            "stream_status": "ACTIVE",
+            "message": "Telemetry demonstration already running"
+        }
+
     simulator.reset_run()
     simulator.set_config(enabled=True)
     await pipeline.resume_stream()
@@ -75,22 +86,27 @@ async def start_demo(operator_id: str = "OPERATOR-PRIMARY"):
 async def stop_demo(operator_id: str = "OPERATOR-PRIMARY"):
     """
     Stops simulated demonstration mode and resets run sequence.
-    Authoritative state transition -> STOPPED.
+    Authoritative state transition: RUNNING/PAUSED -> STOPPED.
+    Preserves all previously processed history records in the database.
     """
+    current_state = await get_system_state("demo_state", "STOPPED")
     simulator.set_config(enabled=False)
     simulator.reset_run()
     await set_system_state("demo_state", "STOPPED")
-    await audit_service.log_stream_state(
-        operator_id=operator_id,
-        state="STOPPED",
-        details={"status": "DEMO_STOPPED"}
-    )
-    await audit_service.log_operator_action(
-        action="DEMO_STOPPED",
-        operator_id=operator_id,
-        confirmed=True,
-        details={"status": "STOPPED"}
-    )
+    
+    if current_state != "STOPPED":
+        await audit_service.log_stream_state(
+            operator_id=operator_id,
+            state="STOPPED",
+            details={"status": "DEMO_STOPPED"}
+        )
+        await audit_service.log_operator_action(
+            action="DEMO_STOPPED",
+            operator_id=operator_id,
+            confirmed=True,
+            details={"status": "STOPPED"}
+        )
+
     await ws_manager.broadcast("system_status_changed", {
         "demo_state": "STOPPED",
         "stream_status": "STOPPED",
@@ -107,8 +123,24 @@ async def stop_demo(operator_id: str = "OPERATOR-PRIMARY"):
 async def pause_stream(operator_id: str = "OPERATOR-PRIMARY"):
     """
     Pauses telemetry stream processing while preserving run state.
-    Authoritative state transition -> PAUSED.
+    Authoritative state transition: RUNNING -> PAUSED.
+    Rejects invalid transitions from STOPPED.
     """
+    current_state = await get_system_state("demo_state", "STOPPED")
+    if current_state == "STOPPED":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot pause demonstration when state is STOPPED. Click START DEMO first."
+        )
+
+    if current_state == "PAUSED":
+        return {
+            "status": "PAUSED",
+            "demo_state": "PAUSED",
+            "stream_status": "PAUSED",
+            "message": "Telemetry stream is already paused"
+        }
+
     await pipeline.pause_stream()
     await set_system_state("demo_state", "PAUSED")
     await audit_service.log_stream_state(
@@ -138,8 +170,24 @@ async def pause_stream(operator_id: str = "OPERATOR-PRIMARY"):
 async def resume_stream(operator_id: str = "OPERATOR-PRIMARY"):
     """
     Resumes telemetry stream processing from preserved state.
-    Authoritative state transition -> RUNNING.
+    Authoritative state transition: PAUSED -> RUNNING.
+    Rejects invalid transitions from STOPPED.
     """
+    current_state = await get_system_state("demo_state", "STOPPED")
+    if current_state == "STOPPED":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot resume demonstration when state is STOPPED. Click START DEMO to begin."
+        )
+
+    if current_state == "RUNNING" and not pipeline.stream_paused:
+        return {
+            "status": "ACTIVE",
+            "demo_state": "RUNNING",
+            "stream_status": "ACTIVE",
+            "message": "Telemetry stream is already running"
+        }
+
     await pipeline.resume_stream()
     if not simulator.enabled:
         simulator.set_config(enabled=True)
