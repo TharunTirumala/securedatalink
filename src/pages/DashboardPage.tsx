@@ -8,6 +8,7 @@ import {
   SimulatorConfig
 } from '../types/telemetry';
 import { api } from '../services/api';
+import { wsClient } from '../services/websocket';
 import { PipelineVisualizer } from '../components/dashboard/PipelineVisualizer';
 import { RealTimeTelemetryFeed } from '../components/dashboard/RealTimeTelemetryFeed';
 import { SecurityAlertsPanel } from '../components/dashboard/SecurityAlertsPanel';
@@ -47,6 +48,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     api.getSimulatorConfig().then(setSimConfig).catch(() => {});
   }, []);
 
+  const [isTogglingPause, setIsTogglingPause] = useState(false);
+
   const handleStartDemo = async () => {
     try {
       const newConfig = { ...simConfig, enabled: true };
@@ -70,20 +73,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   };
 
   const handlePause = async () => {
+    if (isTogglingPause) return;
+    setIsTogglingPause(true);
     try {
+      wsClient.setPaused(true);
       await api.pauseStream();
       onRefreshData();
     } catch (e) {
       console.error('Failed to pause stream:', e);
+    } finally {
+      setTimeout(() => setIsTogglingPause(false), 300);
     }
   };
 
   const handleResume = async () => {
+    if (isTogglingPause) return;
+    setIsTogglingPause(true);
     try {
+      wsClient.setPaused(false);
       await api.resumeStream();
       onRefreshData();
     } catch (e) {
       console.error('Failed to resume stream:', e);
+    } finally {
+      setTimeout(() => setIsTogglingPause(false), 300);
     }
   };
 
@@ -102,9 +115,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <h1 className="text-xl font-bold text-slate-900 tracking-tight">
               SecureLink
             </h1>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-              ONLINE
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold border ${
+              isStreamPaused
+                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${isStreamPaused ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+              {isStreamPaused ? 'STREAM PAUSED' : 'ONLINE'}
             </span>
           </div>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
@@ -112,50 +129,55 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </p>
         </div>
 
-        {/* DEMO MODE CONTROLS: START DEMO | PAUSE | RESUME | STOP */}
+        {/* TACTICAL CONTROLS: PAUSE/RESUME STREAM + DEMO MODE */}
         <div className="flex items-center space-x-2">
+          {/* Pause / Resume Button - Always accessible */}
+          {isStreamPaused ? (
+            <button
+              onClick={handleResume}
+              disabled={isTogglingPause}
+              className="px-3.5 py-1.5 rounded text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white shadow-xs transition-colors flex items-center space-x-1.5 disabled:opacity-50 cursor-pointer"
+              title="Resume tactical telemetry stream processing"
+            >
+              <Play className="w-3.5 h-3.5" />
+              <span>{isTogglingPause ? 'RESUMING...' : 'RESUME STREAM'}</span>
+            </button>
+          ) : (
+            <button
+              onClick={handlePause}
+              disabled={isTogglingPause}
+              className="px-3.5 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition-colors flex items-center space-x-1.5 disabled:opacity-50 cursor-pointer"
+              title="Pause tactical telemetry stream processing"
+            >
+              <Pause className="w-3.5 h-3.5" />
+              <span>{isTogglingPause ? 'PAUSING...' : 'PAUSE STREAM'}</span>
+            </button>
+          )}
+
+          {/* Simulator Controls */}
           {simConfig.enabled ? (
-            <>
+            <div className="flex items-center space-x-2">
               <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                 <span className="relative flex h-2 w-2 mr-1.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                DEMO RUNNING
+                DEMO ACTIVE
               </span>
-
-              {isStreamPaused ? (
-                <button
-                  onClick={handleResume}
-                  className="px-3 py-1.5 rounded text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white transition-colors flex items-center space-x-1"
-                >
-                  <Play className="w-3.5 h-3.5" />
-                  <span>RESUME</span>
-                </button>
-              ) : (
-                <button
-                  onClick={handlePause}
-                  className="px-3 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition-colors flex items-center space-x-1"
-                >
-                  <Pause className="w-3.5 h-3.5" />
-                  <span>PAUSE</span>
-                </button>
-              )}
-
               <button
                 onClick={handleStopDemo}
                 className="px-3 py-1.5 rounded text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
               >
-                STOP
+                STOP DEMO
               </button>
-            </>
+            </div>
           ) : (
             <button
               onClick={handleStartDemo}
-              className="px-3.5 py-1.5 rounded text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white shadow-xs transition-colors flex items-center space-x-1.5"
+              className="px-3 py-1.5 rounded text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors flex items-center space-x-1"
             >
-              <Play className="w-3.5 h-3.5" />
-              <span>START DEMO</span>
+              <Play className="w-3 h-3 text-slate-500" />
+              <span>DEMO MODE</span>
             </button>
           )}
         </div>
@@ -169,9 +191,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             SYSTEM STATUS
           </span>
           <div className="mt-2 flex items-center space-x-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span className={`w-2 h-2 rounded-full ${isStreamPaused ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
             <span className="text-sm font-bold text-slate-800">
-              ONLINE
+              {isStreamPaused ? 'PAUSED' : 'ONLINE'}
             </span>
           </div>
         </div>
@@ -184,11 +206,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="mt-2 flex items-center space-x-1.5">
             <span
               className={`w-2 h-2 rounded-full ${
-                isTelemetryReceiving ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                isStreamPaused
+                  ? 'bg-amber-400'
+                  : isTelemetryReceiving
+                  ? 'bg-emerald-500 animate-pulse'
+                  : 'bg-slate-400'
               }`}
             ></span>
             <span className="text-sm font-bold text-slate-800">
-              {isTelemetryReceiving ? 'RECEIVING' : 'STANDBY'}
+              {isStreamPaused ? 'PAUSED' : isTelemetryReceiving ? 'RECEIVING' : 'STANDBY'}
             </span>
           </div>
         </div>

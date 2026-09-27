@@ -17,10 +17,22 @@ class FreshnessVerifier:
         # LRU cache: nonce_key -> timestamp
         self._nonce_cache: OrderedDict[str, float] = OrderedDict()
 
+    async def initialize_state(self):
+        """Restores persisted freshness window from database."""
+        from app.database.connection import get_system_state
+        persisted = await get_system_state("freshness_window")
+        if persisted:
+            try:
+                self.max_drift_seconds = float(persisted)
+                logger.info(f"Restored persisted freshness tolerance: {self.max_drift_seconds:.1f}s")
+            except ValueError:
+                pass
+
     def set_max_drift(self, seconds: float):
         """Allows operator override of freshness tolerance."""
         self.max_drift_seconds = max(0.5, seconds)
         logger.info(f"Operator override: Freshness window updated to {self.max_drift_seconds:.1f}s")
+
 
     def verify(self, source: str, nonce: str, packet_time: float) -> Tuple[bool, bool, str]:
         """

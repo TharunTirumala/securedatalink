@@ -6,6 +6,7 @@ from app.database.connection import get_db
 from app.database.models import PacketRecord
 from app.crypto.key_manager import key_manager
 from app.processing.adaptive_filter import adaptive_filter
+from app.processing.freshness import freshness_verifier
 from app.processing.pipeline import pipeline
 from app.services.c2_service import c2_service
 from app.ingestion.simulator import simulator
@@ -18,38 +19,40 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     Returns live aggregated tactical datalink metrics from the persistent database
     and active backend modules.
     """
-    # Total evaluated
-    total_result = await db.execute(select(func.count(PacketRecord.id)))
+    # Total evaluated (active buffer)
+    total_result = await db.execute(
+        select(func.count(PacketRecord.id)).where(PacketRecord.is_archived == False)
+    )
     total_packets = total_result.scalar() or 0
 
-    # Authenticated count
+    # Authenticated count (active buffer)
     auth_result = await db.execute(
-        select(func.count(PacketRecord.id)).where(PacketRecord.action == "ACCEPTED")
+        select(func.count(PacketRecord.id)).where(PacketRecord.action == "ACCEPTED", PacketRecord.is_archived == False)
     )
     authenticated_packets = auth_result.scalar() or 0
 
-    # Blocked / Filtered count
+    # Blocked / Filtered count (active buffer)
     blocked_result = await db.execute(
-        select(func.count(PacketRecord.id)).where(PacketRecord.action.in_(["BLOCKED", "FILTERED", "REJECTED"]))
+        select(func.count(PacketRecord.id)).where(PacketRecord.action.in_(["BLOCKED", "FILTERED", "REJECTED"]), PacketRecord.is_archived == False)
     )
     replay_filtered = blocked_result.scalar() or 0
 
-    # Average Trust Score across last 100 packets
+    # Average Trust Score across last 100 active packets
     recent_trust_result = await db.execute(
-        select(func.avg(PacketRecord.trust_score)).order_by(desc(PacketRecord.id)).limit(100)
+        select(func.avg(PacketRecord.trust_score)).where(PacketRecord.is_archived == False).order_by(desc(PacketRecord.id)).limit(100)
     )
     avg_trust = recent_trust_result.scalar()
     avg_trust_score = round(float(avg_trust), 1) if avg_trust is not None else 100.0
 
-    # Average Latency across last 50 packets
+    # Average Latency across last 50 active packets
     recent_lat_result = await db.execute(
-        select(func.avg(PacketRecord.latency_ms)).order_by(desc(PacketRecord.id)).limit(50)
+        select(func.avg(PacketRecord.latency_ms)).where(PacketRecord.is_archived == False).order_by(desc(PacketRecord.id)).limit(50)
     )
     avg_lat = recent_lat_result.scalar()
     avg_latency = round(float(avg_lat), 2) if avg_lat is not None else 1.25
 
     # Derive packet rate
-    packet_rate = simulator.rate_hz if simulator.enabled else (1.0 if total_packets > 0 else 0.0)
+    packet_rate = 0.0 if pipeline.stream_paused else (simulator.rate_hz if simulator.enabled else (1.0 if total_packets > 0 else 0.0))
 
     # Security Status
     filter_stats = adaptive_filter.get_stats()
@@ -83,12 +86,33 @@ async def get_pipeline_stages():
     Returns real-time operational status for each of the 10 pipeline stages.
     """
     filter_stats = adaptive_filter.get_stats()
+    is_paused = pipeline.stream_paused
     return {
         "stages": [
-            {"id": 1, "name": "Telemetry Input", "status": "CONNECTED", "detail": "UDP:9871, FileWatcher, REST"},
-            {"id": 2, "name": "Signal Ingestion", "status": "ACTIVE", "detail": "Ingestion Queue & Normalization"},
-            {"id": 3, "name": "Preprocessing", "status": "ACTIVE", "detail": "Frame validation & sanitization"},
-            {"id": 4, "name": "Nonce/Freshness", "status": "PASS", "detail": "5.0s window & replay cache"},
+            {
+                "id": 1,
+                "name": "Telemetry Input",
+                "status": "PAUSED" if is_paused else "CONNECTED",
+                "detail": "Stream paused by operator" if is_paused else "UDP:9871, FileWatcher, REST"
+            },
+            {
+                "id": 2,
+                "name": "Signal Ingestion",
+                "status": "STANDBY" if is_paused else "ACTIVE",
+                "detail": "Ingestion Queue & Normalization"
+            },
+            {
+                "id": 3,
+                "name": "Preprocessing",
+                "status": "STANDBY" if is_paused else "ACTIVE",
+                "detail": "Frame validation & sanitization"
+            },
+            {
+                "id": 4,
+                "name": "Nonce/Freshness",
+                "status": "PASS",
+                "detail": f"{freshness_verifier.max_drift_seconds:.1f}s window & replay cache"
+            },
             {"id": 5, "name": "AES-256-GCM", "status": "PASS", "detail": f"Key: {key_manager.active_key_id}"},
             {"id": 6, "name": "ECDSA", "status": "PASS", "detail": "NIST P-256 (secp256r1)"},
             {"id": 7, "name": "Integrity", "status": "PASS", "detail": "SHA-256 cryptographic digest"},

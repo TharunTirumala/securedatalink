@@ -38,6 +38,13 @@ class PacketRecord(Base):
     latency_ms = Column(Float, default=0.0)
     simulated = Column(Boolean, default=False)
     created_at = Column(DateTime, default=utcnow, index=True)
+    
+    # Archival fields
+    is_archived = Column(Boolean, default=False, index=True)
+    archived_at = Column(DateTime, nullable=True, index=True)
+    archived_by = Column(String(64), nullable=True)
+    archive_batch_id = Column(String(64), nullable=True)
+
 
 class SecurityLogRecord(Base):
     __tablename__ = "security_logs"
@@ -85,3 +92,11 @@ class FileProcessingRecord(Base):
     status = Column(String(32), default="PROCESSED") # PROCESSED, ERROR, MALFORMED
     error_message = Column(Text, nullable=True)
     processed_at = Column(DateTime, default=utcnow, index=True)
+
+class SystemStateRecord(Base):
+    __tablename__ = "system_state"
+
+    key = Column(String(64), primary_key=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+

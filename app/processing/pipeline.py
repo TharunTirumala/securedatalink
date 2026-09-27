@@ -37,13 +37,27 @@ class TacticalProcessingPipeline:
     def __init__(self):
         self.stream_paused = False
 
-    def pause_stream(self):
+    async def initialize_state(self):
+        from app.database.connection import get_system_state
+        state = await get_system_state("stream_status", "ACTIVE")
+        self.stream_paused = (state == "PAUSED")
+        if self.stream_paused:
+            logger.info("Restored stream state: PAUSED")
+        else:
+            logger.info("Restored stream state: ACTIVE")
+
+    async def pause_stream(self):
+        from app.database.connection import set_system_state
         self.stream_paused = True
+        await set_system_state("stream_status", "PAUSED")
         logger.warning("Pipeline: Stream PAUSED by operator command")
 
-    def resume_stream(self):
+    async def resume_stream(self):
+        from app.database.connection import set_system_state
         self.stream_paused = False
+        await set_system_state("stream_status", "ACTIVE")
         logger.info("Pipeline: Stream RESUMED by operator command")
+
 
     async def process_packet(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """

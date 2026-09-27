@@ -21,10 +21,15 @@ class WebSocketClient {
   private pingInterval: any = null;
   private simulationInterval: any = null;
   private failCount: number = 0;
+  private isPaused: boolean = false;
   public isConnected: boolean = false;
 
   constructor() {
     this.connect();
+  }
+
+  public setPaused(paused: boolean) {
+    this.isPaused = paused;
   }
 
   public connect() {
@@ -63,6 +68,9 @@ class WebSocketClient {
         try {
           const parsed = JSON.parse(event.data);
           if (parsed.event && parsed.data) {
+            if (parsed.event === 'system_status_changed' && parsed.data.stream_status) {
+              this.isPaused = (parsed.data.stream_status === 'PAUSED');
+            }
             this.emit(parsed.event, parsed.data);
           }
         } catch (e) {}
@@ -111,6 +119,7 @@ class WebSocketClient {
     const sources = ['UAV-ALPHA-01', 'UAV-BRAVO-02', 'UGV-SIERRA-03', 'BASE-RELAY-04'];
     
     this.simulationInterval = setInterval(() => {
+      if (this.isPaused) return;
       seq++;
       const source = sources[Math.floor(Math.random() * sources.length)];
       const isTampered = Math.random() < 0.15;

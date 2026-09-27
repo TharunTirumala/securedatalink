@@ -16,12 +16,16 @@ async def get_packets(
     source: Optional[str] = None,
     classification: Optional[str] = None,
     action: Optional[str] = None,
+    include_archived: bool = Query(False),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Returns list of processed tactical telemetry packets with optional filtering.
+    Archived packets are separated by default.
     """
     query = select(PacketRecord).order_by(desc(PacketRecord.id))
+    if not include_archived:
+        query = query.where(PacketRecord.is_archived == False)
     if source:
         query = query.where(PacketRecord.source == source)
     if classification:
@@ -58,6 +62,8 @@ async def get_packets(
             "latency_ms": p.latency_ms,
             "decrypted_payload": p.decrypted_payload,
             "simulated": p.simulated,
+            "is_archived": bool(p.is_archived),
+            "archived_at": p.archived_at.isoformat() if p.archived_at else None,
             "created_at": p.created_at.isoformat() if p.created_at else None
         }
         for p in packets

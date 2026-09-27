@@ -7,6 +7,20 @@ from sqlalchemy import select, desc
 from app.database.connection import async_session
 from app.database.models import SecurityLogRecord, ThreatEventRecord, OperatorActionRecord
 from app.core.logging import logger
+from app.services.ws_manager import ws_manager
+
+def sanitize_log_data(data: Any) -> Any:
+    if isinstance(data, dict):
+        sanitized = {}
+        for k, v in data.items():
+            if any(secret_term in k.lower() for secret_term in ("secret", "key_bytes", "passcode", "password", "token", "auth_tag")):
+                sanitized[k] = "••••••••"
+            else:
+                sanitized[k] = sanitize_log_data(v)
+        return sanitized
+    elif isinstance(data, list):
+        return [sanitize_log_data(item) for item in data]
+    return data
 
 class AuditService:
     """
@@ -22,6 +36,7 @@ class AuditService:
         packet_id: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None
     ) -> SecurityLogRecord:
+        clean_details = sanitize_log_data(details) if details else None
         async with async_session() as session:
             record = SecurityLogRecord(
                 timestamp=datetime.now(timezone.utc),
@@ -30,11 +45,26 @@ class AuditService:
                 source=source,
                 packet_id=packet_id,
                 description=description,
-                details=details
+                details=clean_details
             )
             session.add(record)
             await session.commit()
             await session.refresh(record)
+            
+            try:
+                await ws_manager.broadcast("security_log_added", {
+                    "id": record.id,
+                    "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+                    "event_type": record.event_type,
+                    "severity": record.severity,
+                    "source": record.source,
+                    "packet_id": record.packet_id,
+                    "description": record.description,
+                    "details": record.details
+                })
+            except Exception:
+                pass
+                
             return record
 
     @staticmethod
@@ -46,6 +76,7 @@ class AuditService:
         action: str,
         details: Optional[Dict[str, Any]] = None
     ) -> ThreatEventRecord:
+        clean_details = sanitize_log_data(details) if details else None
         async with async_session() as session:
             threat = ThreatEventRecord(
                 timestamp=datetime.now(timezone.utc),
@@ -54,7 +85,7 @@ class AuditService:
                 event=event,
                 severity=severity,
                 action=action,
-                details=details
+                details=clean_details
             )
             session.add(threat)
             
@@ -66,11 +97,27 @@ class AuditService:
                 source=source,
                 packet_id=packet_id,
                 description=f"{event} - Action: {action}",
-                details=details
+                details=clean_details
             )
             session.add(audit_log)
             await session.commit()
             await session.refresh(threat)
+            await session.refresh(audit_log)
+            
+            try:
+                await ws_manager.broadcast("security_log_added", {
+                    "id": audit_log.id,
+                    "timestamp": audit_log.timestamp.isoformat() if audit_log.timestamp else None,
+                    "event_type": audit_log.event_type,
+                    "severity": audit_log.severity,
+                    "source": audit_log.source,
+                    "packet_id": audit_log.packet_id,
+                    "description": audit_log.description,
+                    "details": audit_log.details
+                })
+            except Exception:
+                pass
+                
             return threat
 
     @staticmethod
@@ -81,6 +128,7 @@ class AuditService:
         status: str = "EXECUTED",
         details: Optional[Dict[str, Any]] = None
     ) -> OperatorActionRecord:
+        clean_details = sanitize_log_data(details) if details else None
         async with async_session() as session:
             record = OperatorActionRecord(
                 timestamp=datetime.now(timezone.utc),
@@ -88,23 +136,110 @@ class AuditService:
                 action=action,
                 confirmed=confirmed,
                 status=status,
-                details=details
+                details=clean_details
             )
             session.add(record)
             
             # Write audit trail
+            severity = "WARNING" if "OVERRIDE" in action or "RESYNC" in action else "INFO"
             audit = SecurityLogRecord(
                 timestamp=datetime.now(timezone.utc),
                 event_type="OPERATOR_CONTROL",
-                severity="WARNING" if "OVERRIDE" in action or "RESYNC" in action else "INFO",
+                severity=severity,
                 source=operator_id,
                 description=f"Operator action executed: {action}",
-                details=details
+                details=clean_details
             )
             session.add(audit)
             await session.commit()
             await session.refresh(record)
+            await session.refresh(audit)
+            
+            try:
+                await ws_manager.broadcast("security_log_added", {
+                    "id": audit.id,
+                    "timestamp": audit.timestamp.isoformat() if audit.timestamp else None,
+                    "event_type": audit.event_type,
+                    "severity": audit.severity,
+                    "source": audit.source,
+                    "packet_id": audit.packet_id,
+                    "description": audit.description,
+                    "details": audit.details
+                })
+            except Exception:
+                pass
+                
             return record
+
+    @classmethod
+    async def log_archive_action(
+        cls,
+        operator_id: str,
+        count: int,
+        batch_id: str,
+        packet_ids: Optional[List[str]] = None
+    ) -> SecurityLogRecord:
+        """Records data archival in the security audit trail."""
+        return await cls.log_security_event(
+            event_type="DATA_ARCHIVE",
+            severity="INFO",
+            source=operator_id,
+            description=f"Archived {count} packet(s) to persistent vault [Batch: {batch_id}]",
+            details={
+                "batch_id": batch_id,
+                "archived_count": count,
+                "sample_packet_ids": packet_ids[:5] if packet_ids else []
+            }
+        )
+
+    @classmethod
+    async def log_restore_action(
+        cls,
+        operator_id: str,
+        packet_id: str
+    ) -> SecurityLogRecord:
+        """Records data restoration from the archive vault."""
+        return await cls.log_security_event(
+            event_type="DATA_RESTORE",
+            severity="INFO",
+            source=operator_id,
+            packet_id=packet_id,
+            description=f"Restored packet {packet_id} from vault to active telemetry buffer",
+            details={"packet_id": packet_id, "action": "RESTORED"}
+        )
+
+    @classmethod
+    async def log_authorization_failure(
+        cls,
+        operator_id: str,
+        attempted_action: str,
+        details: Optional[Dict[str, Any]] = None
+    ) -> SecurityLogRecord:
+        """Records an authorization or permission failure."""
+        return await cls.log_security_event(
+            event_type="AUTHORIZATION_FAILURE",
+            severity="CRITICAL",
+            source=operator_id,
+            description=f"Unauthorized request rejected: {attempted_action} (Attempted by: {operator_id})",
+            details=details
+        )
+
+    @classmethod
+    async def log_stream_state(
+        cls,
+        operator_id: str,
+        state: str,
+        details: Optional[Dict[str, Any]] = None
+    ) -> SecurityLogRecord:
+        """Records a stream pause/resume state transition."""
+        return await cls.log_security_event(
+            event_type="STREAM_STATE_CHANGE",
+            severity="WARNING" if state == "PAUSED" else "INFO",
+            source=operator_id,
+            description=f"Tactical telemetry stream transitioned to {state} by {operator_id}",
+            details=details
+        )
+
 
     @staticmethod
     async def export_logs_csv() -> str:

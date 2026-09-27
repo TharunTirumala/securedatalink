@@ -50,4 +50,9 @@ class Settings(BaseModel):
     DEMO_DEFAULT_RATE_HZ: float = 1.0
     DEMO_DEFAULT_ATTACK_RATIO: float = 0.25
 
+    # Operator Security & Authorization
+    OPERATOR_OVERRIDE_PASSCODE: str = os.getenv("OPERATOR_OVERRIDE_PASSCODE", "TAC-SEC-8000")
+    AUTHORIZED_OPERATORS: list = ["OPERATOR-PRIMARY", "OPERATOR-BACKUP", "TACTICAL-SUPERVISOR", "CHIEF-SECURITY-OFFICER"]
+
+
 settings = Settings()

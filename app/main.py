@@ -12,12 +12,16 @@ from app.api.websocket import router as ws_router
 from app.ingestion.file_watcher import file_watcher
 from app.ingestion.simulator import simulator
 from app.ingestion.udp_receiver import udp_receiver
+from app.processing.pipeline import pipeline
+from app.processing.freshness import freshness_verifier
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Initializing SecureLink Cyber-Secure Tactical Datalink System...")
     await init_db()
+    await pipeline.initialize_state()
+    await freshness_verifier.initialize_state()
     await file_watcher.start()
     await simulator.start()
     await udp_receiver.start()

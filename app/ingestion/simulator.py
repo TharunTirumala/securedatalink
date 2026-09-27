@@ -54,7 +54,7 @@ class TelemetrySimulator:
     async def _run_loop(self):
         while True:
             try:
-                if self.enabled:
+                if self.enabled and not pipeline.stream_paused:
                     raw_packet = self._generate_packet()
                     await pipeline.process_packet(raw_packet)
                 

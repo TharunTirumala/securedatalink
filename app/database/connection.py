@@ -18,11 +18,53 @@ async_session = async_sessionmaker(
 )
 
 async def init_db():
-    """Initializes tables in persistent SQLite database."""
+    """Initializes tables and performs safe migrations on persistent SQLite database."""
     async with engine.begin() as conn:
         from app.database import models  # noqa: F401
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("Persistent SQLite database initialized successfully.")
+        
+        def migrate_schema(sync_conn):
+            cursor = sync_conn.connection.cursor()
+            try:
+                cursor.execute("PRAGMA table_info(packets)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if "is_archived" not in columns:
+                    cursor.execute("ALTER TABLE packets ADD COLUMN is_archived BOOLEAN DEFAULT 0")
+                if "archived_at" not in columns:
+                    cursor.execute("ALTER TABLE packets ADD COLUMN archived_at DATETIME")
+                if "archived_by" not in columns:
+                    cursor.execute("ALTER TABLE packets ADD COLUMN archived_by VARCHAR(64)")
+                if "archive_batch_id" not in columns:
+                    cursor.execute("ALTER TABLE packets ADD COLUMN archive_batch_id VARCHAR(64)")
+                sync_conn.connection.commit()
+            except Exception as e:
+                logger.warning(f"Schema migration note: {e}")
+
+        await conn.run_sync(migrate_schema)
+    logger.info("Persistent SQLite database initialized and verified.")
+
+async def get_system_state(key: str, default: str = None) -> str:
+    """Retrieves a persistent system state value."""
+    from app.database.models import SystemStateRecord
+    from sqlalchemy import select
+    async with async_session() as session:
+        result = await session.execute(select(SystemStateRecord).where(SystemStateRecord.key == key))
+        rec = result.scalar_one_or_none()
+        return rec.value if rec else default
+
+async def set_system_state(key: str, value: str):
+    """Sets a persistent system state value."""
+    from app.database.models import SystemStateRecord
+    from datetime import datetime, timezone
+    async with async_session() as session:
+        rec = await session.get(SystemStateRecord, key)
+        if rec:
+            rec.value = value
+            rec.updated_at = datetime.now(timezone.utc)
+        else:
+            rec = SystemStateRecord(key=key, value=value)
+            session.add(rec)
+        await session.commit()
 
 async def get_db():
     """Dependency for API endpoints to get database session."""
@@ -31,3 +73,4 @@ async def get_db():
             yield session
         finally:
             await session.close()
+

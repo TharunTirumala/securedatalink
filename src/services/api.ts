@@ -128,6 +128,14 @@ export const api = {
   },
 
   // Operator Controls
+  async getOperatorStatus(): Promise<{ freshness_window: number; stream_status: string; authorized_operators: string[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/operator/status`);
+      if (res.ok) return await res.json();
+    } catch (e) {}
+    return { freshness_window: 5.0, stream_status: 'ACTIVE', authorized_operators: ['OPERATOR-PRIMARY'] };
+  },
+
   async pauseStream(operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/operator/pause?operator_id=${encodeURIComponent(operatorId)}`, {
@@ -135,7 +143,7 @@ export const api = {
       });
       if (res.ok) return await res.json();
     } catch (e) {}
-    return { status: 'PAUSED', operator_id: operatorId };
+    return { status: 'PAUSED', stream_status: 'PAUSED', operator_id: operatorId };
   },
 
   async resumeStream(operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
@@ -145,17 +153,28 @@ export const api = {
       });
       if (res.ok) return await res.json();
     } catch (e) {}
-    return { status: 'ACTIVE', operator_id: operatorId };
+    return { status: 'ACTIVE', stream_status: 'ACTIVE', operator_id: operatorId };
   },
 
-  async applyOverride(freshnessWindow: number, operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE}/operator/override?freshness_window=${freshnessWindow}&operator_id=${encodeURIComponent(operatorId)}`, {
-        method: 'POST'
-      });
-      if (res.ok) return await res.json();
-    } catch (e) {}
-    return { status: 'OVERRIDE_APPLIED', freshness_window: freshnessWindow };
+  async applyOverride(freshnessWindow: number, operatorId: string = 'OPERATOR-PRIMARY', passcode: string = ''): Promise<any> {
+    const res = await fetch(`${API_BASE}/operator/override`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        freshness_window: freshnessWindow,
+        operator_id: operatorId,
+        passcode: passcode
+      })
+    });
+    if (!res.ok) {
+      let errorMsg = 'Failed to apply security override';
+      try {
+        const data = await res.json();
+        if (data.detail) errorMsg = data.detail;
+      } catch {}
+      throw new Error(errorMsg);
+    }
+    return await res.json();
   },
 
   async getSimulatorConfig(): Promise<SimulatorConfig> {
@@ -189,7 +208,7 @@ export const api = {
       if (res.ok) return await res.json();
     } catch (e) {}
     return [
-      { id: 1, action: 'KEY_ROTATION', operator: 'OPERATOR-PRIMARY', timestamp: new Date().toISOString() }
+      { id: 1, action: 'KEY_ROTATION', operator_id: 'OPERATOR-PRIMARY', timestamp: new Date().toISOString() }
     ];
   },
 
@@ -219,5 +238,69 @@ export const api = {
       if (res.ok) return await res.json();
     } catch (e) {}
     return [];
+  },
+
+  async archivePackets(params: { packet_ids?: string[]; archive_all_active?: boolean; operator_id?: string; reason?: string } = {}): Promise<any> {
+    const res = await fetch(`${API_BASE}/archive/packets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        packet_ids: params.packet_ids,
+        archive_all_active: params.archive_all_active ?? false,
+        operator_id: params.operator_id ?? 'OPERATOR-PRIMARY',
+        reason: params.reason ?? 'Tactical telemetry archival'
+      })
+    });
+    if (!res.ok) {
+      let msg = 'Failed to archive data';
+      try {
+        const err = await res.json();
+        if (err.detail) msg = err.detail;
+      } catch {}
+      throw new Error(msg);
+    }
+    return await res.json();
+  },
+
+  async getArchivedPackets(params: { limit?: number; offset?: number; search?: string; source?: string } = {}): Promise<Packet[]> {
+    try {
+      const query = new URLSearchParams();
+      if (params.limit) query.set('limit', params.limit.toString());
+      if (params.offset) query.set('offset', params.offset.toString());
+      if (params.source) query.set('source', params.source);
+      if (params.search) query.set('search', params.search);
+
+      const res = await fetch(`${API_BASE}/archive/packets?${query.toString()}`);
+      if (res.ok) return await res.json();
+    } catch (e) {}
+    return [];
+  },
+
+  async restorePacket(packetId: string, operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
+    const res = await fetch(`${API_BASE}/archive/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        packet_id: packetId,
+        operator_id: operatorId
+      })
+    });
+    if (!res.ok) {
+      let msg = 'Failed to restore packet';
+      try {
+        const err = await res.json();
+        if (err.detail) msg = err.detail;
+      } catch {}
+      throw new Error(msg);
+    }
+    return await res.json();
+  },
+
+  async getArchiveStats(): Promise<{ active_packets: number; archived_packets: number; total_files: number; last_archived_at: string | null }> {
+    try {
+      const res = await fetch(`${API_BASE}/archive/stats`);
+      if (res.ok) return await res.json();
+    } catch (e) {}
+    return { active_packets: 0, archived_packets: 0, total_files: 0, last_archived_at: null };
   }
 };

@@ -7,6 +7,8 @@ interface ConfirmModalProps {
   message: string;
   confirmLabel?: string;
   confirmVariant?: 'danger' | 'warning' | 'primary';
+  disabled?: boolean;
+  children?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -17,6 +19,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   message,
   confirmLabel = 'Confirm Action',
   confirmVariant = 'primary',
+  disabled = false,
+  children,
   onConfirm,
   onCancel
 }) => {
@@ -42,9 +46,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-5">
+        <div className="p-5 space-y-4">
           <p className="text-sm text-slate-600 leading-relaxed">{message}</p>
-          <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-500">
+          {children}
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded text-xs text-slate-500">
             <span className="font-semibold text-slate-700">Audit Notice:</span> This action will be permanently recorded in the persistent security log with operator timestamp.
           </div>
         </div>
@@ -57,7 +62,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 rounded-md text-xs font-semibold shadow-sm transition-colors ${btnClasses}`}
+            disabled={disabled}
+            className={`px-4 py-2 rounded-md text-xs font-semibold shadow-sm transition-colors ${
+              disabled ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : btnClasses
+            }`}
           >
             {confirmLabel}
           </button>
