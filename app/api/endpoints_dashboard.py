@@ -2,7 +2,7 @@ import time
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
-from app.database.connection import get_db
+from app.database.connection import get_db, get_system_state
 from app.database.models import PacketRecord
 from app.crypto.key_manager import key_manager
 from app.processing.adaptive_filter import adaptive_filter
@@ -64,6 +64,12 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     else:
         system_status = "SECURE_NOMINAL"
 
+    saved_state = await get_system_state("demo_state", None)
+    if saved_state:
+        demo_state = saved_state
+    else:
+        demo_state = "PAUSED" if pipeline.stream_paused else ("RUNNING" if simulator.enabled else "STOPPED")
+
     c2_stats = c2_service.get_status()
 
     return {
@@ -74,6 +80,7 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
         "system_security_status": system_status,
         "trust_score": avg_trust_score,
         "stream_status": "PAUSED" if pipeline.stream_paused else "ACTIVE",
+        "demo_state": demo_state,
         "active_key_id": key_manager.active_key_id,
         "simulator_active": simulator.enabled,
         "adaptive_filter": filter_stats,

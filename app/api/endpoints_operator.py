@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
-from app.database.connection import get_db, set_system_state
+from app.database.connection import get_db, set_system_state, get_system_state
 from app.database.models import OperatorActionRecord
 from app.processing.pipeline import pipeline
 from app.processing.freshness import freshness_verifier
@@ -23,17 +23,94 @@ class OverrideRequest(BaseModel):
 @router.get("/status")
 async def get_operator_status():
     """Returns current operator control status and configuration."""
+    saved_state = await get_system_state("demo_state", None)
+    if saved_state:
+        demo_state = saved_state
+    else:
+        demo_state = "PAUSED" if pipeline.stream_paused else ("RUNNING" if simulator.enabled else "STOPPED")
+
     return {
         "freshness_window": freshness_verifier.max_drift_seconds,
         "stream_status": "PAUSED" if pipeline.stream_paused else "ACTIVE",
+        "demo_state": demo_state,
+        "simulator_active": simulator.enabled,
         "authorized_operators": settings.AUTHORIZED_OPERATORS,
         "cache_entries": len(freshness_verifier._nonce_cache)
     }
 
+@router.post("/start")
+async def start_demo(operator_id: str = "OPERATOR-PRIMARY"):
+    """
+    Starts simulated demonstration mode with fresh sequence counters.
+    Authoritative state transition -> RUNNING.
+    """
+    simulator.reset_run()
+    simulator.set_config(enabled=True)
+    await pipeline.resume_stream()
+    await set_system_state("demo_state", "RUNNING")
+    await audit_service.log_stream_state(
+        operator_id=operator_id,
+        state="RUNNING",
+        details={"status": "DEMO_STARTED"}
+    )
+    await audit_service.log_operator_action(
+        action="DEMO_STARTED",
+        operator_id=operator_id,
+        confirmed=True,
+        details={"status": "RUNNING"}
+    )
+    await ws_manager.broadcast("system_status_changed", {
+        "demo_state": "RUNNING",
+        "stream_status": "ACTIVE",
+        "simulator_active": True
+    })
+    return {
+        "status": "RUNNING",
+        "demo_state": "RUNNING",
+        "stream_status": "ACTIVE",
+        "message": "Telemetry demonstration started"
+    }
+
+@router.post("/stop")
+async def stop_demo(operator_id: str = "OPERATOR-PRIMARY"):
+    """
+    Stops simulated demonstration mode and resets run sequence.
+    Authoritative state transition -> STOPPED.
+    """
+    simulator.set_config(enabled=False)
+    simulator.reset_run()
+    await set_system_state("demo_state", "STOPPED")
+    await audit_service.log_stream_state(
+        operator_id=operator_id,
+        state="STOPPED",
+        details={"status": "DEMO_STOPPED"}
+    )
+    await audit_service.log_operator_action(
+        action="DEMO_STOPPED",
+        operator_id=operator_id,
+        confirmed=True,
+        details={"status": "STOPPED"}
+    )
+    await ws_manager.broadcast("system_status_changed", {
+        "demo_state": "STOPPED",
+        "stream_status": "STOPPED",
+        "simulator_active": False
+    })
+    return {
+        "status": "STOPPED",
+        "demo_state": "STOPPED",
+        "stream_status": "STOPPED",
+        "message": "Telemetry demonstration stopped"
+    }
+
 @router.post("/pause")
 async def pause_stream(operator_id: str = "OPERATOR-PRIMARY"):
-    """Pauses telemetry stream processing."""
+    """
+    Pauses telemetry stream processing while preserving run state.
+    Authoritative state transition -> PAUSED.
+    """
     await pipeline.pause_stream()
+    await set_system_state("demo_state", "PAUSED")
     await audit_service.log_stream_state(
         operator_id=operator_id,
         state="PAUSED",
@@ -45,13 +122,28 @@ async def pause_stream(operator_id: str = "OPERATOR-PRIMARY"):
         confirmed=True,
         details={"status": "PAUSED"}
     )
-    await ws_manager.broadcast("system_status_changed", {"stream_status": "PAUSED"})
-    return {"status": "PAUSED", "stream_status": "PAUSED", "message": "Telemetry stream paused by operator"}
+    await ws_manager.broadcast("system_status_changed", {
+        "demo_state": "PAUSED",
+        "stream_status": "PAUSED",
+        "simulator_active": simulator.enabled
+    })
+    return {
+        "status": "PAUSED",
+        "demo_state": "PAUSED",
+        "stream_status": "PAUSED",
+        "message": "Telemetry stream paused by operator"
+    }
 
 @router.post("/resume")
 async def resume_stream(operator_id: str = "OPERATOR-PRIMARY"):
-    """Resumes telemetry stream processing."""
+    """
+    Resumes telemetry stream processing from preserved state.
+    Authoritative state transition -> RUNNING.
+    """
     await pipeline.resume_stream()
+    if not simulator.enabled:
+        simulator.set_config(enabled=True)
+    await set_system_state("demo_state", "RUNNING")
     await audit_service.log_stream_state(
         operator_id=operator_id,
         state="ACTIVE",
@@ -63,8 +155,17 @@ async def resume_stream(operator_id: str = "OPERATOR-PRIMARY"):
         confirmed=True,
         details={"status": "ACTIVE"}
     )
-    await ws_manager.broadcast("system_status_changed", {"stream_status": "ACTIVE"})
-    return {"status": "ACTIVE", "stream_status": "ACTIVE", "message": "Telemetry stream resumed by operator"}
+    await ws_manager.broadcast("system_status_changed", {
+        "demo_state": "RUNNING",
+        "stream_status": "ACTIVE",
+        "simulator_active": True
+    })
+    return {
+        "status": "ACTIVE",
+        "demo_state": "RUNNING",
+        "stream_status": "ACTIVE",
+        "message": "Telemetry stream resumed by operator"
+    }
 
 @router.post("/override")
 async def security_override(

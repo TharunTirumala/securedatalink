@@ -1,3 +1,4 @@
+import time
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -341,5 +342,86 @@ async def test_custom_telemetry_ingestion_and_pipeline_execution():
         assert pkt_data["packet_id"] == data["packet_id"]
         assert pkt_data["simulated"] is False
         assert pkt_data["source"] == "CUSTOM-001"
+
+@pytest.mark.asyncio
+async def test_demo_state_machine_and_audit_transitions():
+    """
+    Verifies full lifecycle of Demo state machine:
+    STOPPED -> START DEMO -> RUNNING -> PAUSE -> PAUSED -> RESUME -> RUNNING -> STOP -> STOPPED.
+    Verifies persistent demo_state, audit events, and custom telemetry coexistence.
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # 1. Start Demo
+        res_start = await ac.post("/api/v1/operator/start?operator_id=OPERATOR-PRIMARY")
+        assert res_start.status_code == 200
+        start_data = res_start.json()
+        assert start_data["status"] == "RUNNING"
+        assert start_data["demo_state"] == "RUNNING"
+        assert start_data["stream_status"] == "ACTIVE"
+
+        # Check status & dashboard stats reflect RUNNING
+        res_status = await ac.get("/api/v1/operator/status")
+        assert res_status.status_code == 200
+        assert res_status.json()["demo_state"] == "RUNNING"
+
+        res_dash = await ac.get("/api/v1/dashboard/stats")
+        assert res_dash.status_code == 200
+        assert res_dash.json()["demo_state"] == "RUNNING"
+
+        # 2. Pause Demo
+        res_pause = await ac.post("/api/v1/operator/pause?operator_id=OPERATOR-PRIMARY")
+        assert res_pause.status_code == 200
+        pause_data = res_pause.json()
+        assert pause_data["status"] == "PAUSED"
+        assert pause_data["demo_state"] == "PAUSED"
+        assert pause_data["stream_status"] == "PAUSED"
+
+        res_status = await ac.get("/api/v1/operator/status")
+        assert res_status.json()["demo_state"] == "PAUSED"
+
+        # 3. Custom telemetry must still process through 10-stage pipeline while paused
+        now_ts = time.time()
+        res_custom = await ac.post("/api/v1/telemetry/ingest", json={
+            "device_id": "CUSTOM-001",
+            "latitude": 34.0522,
+            "longitude": -118.2437,
+            "altitude": 150.0,
+            "speed": 22.0,
+            "heading": 90.0,
+            "timestamp": now_ts
+        })
+        assert res_custom.status_code == 200
+        assert res_custom.json()["action"] == "ACCEPTED"
+        assert res_custom.json()["source"] == "CUSTOM-001"
+
+        # 4. Resume Demo
+        res_resume = await ac.post("/api/v1/operator/resume?operator_id=OPERATOR-PRIMARY")
+        assert res_resume.status_code == 200
+        resume_data = res_resume.json()
+        assert resume_data["status"] == "ACTIVE"
+        assert resume_data["demo_state"] == "RUNNING"
+        assert resume_data["stream_status"] == "ACTIVE"
+
+        # 5. Stop Demo
+        res_stop = await ac.post("/api/v1/operator/stop?operator_id=OPERATOR-PRIMARY")
+        assert res_stop.status_code == 200
+        stop_data = res_stop.json()
+        assert stop_data["status"] == "STOPPED"
+        assert stop_data["demo_state"] == "STOPPED"
+        assert stop_data["stream_status"] == "STOPPED"
+
+        res_status = await ac.get("/api/v1/operator/status")
+        assert res_status.json()["demo_state"] == "STOPPED"
+
+        # 6. Verify audit logs record all actions persistently
+        res_logs = await ac.get("/api/v1/archive/logs?limit=50")
+        assert res_logs.status_code == 200
+        logs = res_logs.json()
+        descriptions = [l.get("description", "") for l in logs]
+
+        assert any("DEMO_STARTED" in d or "START" in d for d in descriptions)
+        assert any("STREAM_PAUSED" in d or "PAUSED" in d for d in descriptions)
+        assert any("STREAM_RESUMED" in d or "RESUMED" in d for d in descriptions)
+        assert any("DEMO_STOPPED" in d or "STOPPED" in d for d in descriptions)
 
 

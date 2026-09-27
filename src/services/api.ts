@@ -135,12 +135,32 @@ export const api = {
   },
 
   // Operator Controls
-  async getOperatorStatus(): Promise<{ freshness_window: number; stream_status: string; authorized_operators: string[]; cache_entries?: number }> {
+  async getOperatorStatus(): Promise<{ freshness_window: number; stream_status: string; demo_state?: string; authorized_operators: string[]; cache_entries?: number }> {
     try {
       const res = await fetch(`${API_BASE}/operator/status`);
       if (res.ok) return await res.json();
     } catch (e) {}
-    return { freshness_window: 5.0, stream_status: 'ACTIVE', authorized_operators: ['OPERATOR-PRIMARY'], cache_entries: 0 };
+    return { freshness_window: 5.0, stream_status: 'STOPPED', demo_state: 'STOPPED', authorized_operators: ['OPERATOR-PRIMARY'], cache_entries: 0 };
+  },
+
+  async startDemo(operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
+    const res = await fetch(`${API_BASE}/operator/start?operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      throw new Error(`Start demo command rejected (HTTP ${res.status})`);
+    }
+    return await res.json();
+  },
+
+  async stopDemo(operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
+    const res = await fetch(`${API_BASE}/operator/stop?operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      throw new Error(`Stop demo command rejected (HTTP ${res.status})`);
+    }
+    return await res.json();
   },
 
   async pauseStream(operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
 import { ConfirmModal } from '../components/common/ConfirmModal';
-import { SimulatorConfig } from '../types/telemetry';
 import {
   SlidersHorizontal,
   ShieldAlert,
@@ -16,8 +15,7 @@ import {
   Trash2,
   Cpu,
   Layers,
-  Radio,
-  Sliders
+  Radio
 } from 'lucide-react';
 
 export const OperatorOverridePage: React.FC = () => {
@@ -36,15 +34,6 @@ export const OperatorOverridePage: React.FC = () => {
   const [passcode, setPasscode] = useState('');
   const [operatorActions, setOperatorActions] = useState<any[]>([]);
   
-  // Simulator State
-  const [simConfig, setSimConfig] = useState<SimulatorConfig>({
-    enabled: true,
-    rate_hz: 1.0,
-    attack_ratio: 0.25,
-    sources: ['UAV-ALPHA-01', 'UAV-BRAVO-02', 'UGV-SIERRA-03', 'BASE-RELAY-04']
-  });
-  const [isUpdatingSim, setIsUpdatingSim] = useState(false);
-
   // Modal State
   const [modalAction, setModalAction] = useState<'override' | 'clear_cache' | 'resync_key' | 'pause_stream' | 'resume_stream' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -53,11 +42,10 @@ export const OperatorOverridePage: React.FC = () => {
 
   const fetchStatusAndActions = async () => {
     try {
-      const [status, actions, keyData, sim] = await Promise.all([
+      const [status, actions, keyData] = await Promise.all([
         api.getOperatorStatus().catch(() => null),
         api.getOperatorActions().catch(() => []),
-        api.getActiveKey().catch(() => null),
-        api.getSimulatorConfig().catch(() => null)
+        api.getActiveKey().catch(() => null)
       ]);
 
       if (status) {
@@ -77,9 +65,6 @@ export const OperatorOverridePage: React.FC = () => {
       }
       if (keyData && keyData.key_id) {
         setActiveKeyId(keyData.key_id);
-      }
-      if (sim) {
-        setSimConfig(sim);
       }
       setOperatorActions(actions);
     } catch (e) {
@@ -101,9 +86,6 @@ export const OperatorOverridePage: React.FC = () => {
     const unsubStatus = wsClient.on('system_status_changed', (data: any) => {
       if (data && data.stream_status) {
         setStreamStatus(data.stream_status as 'ACTIVE' | 'PAUSED');
-      }
-      if (data && data.simulator_active !== undefined) {
-        setSimConfig(prev => ({ ...prev, enabled: data.simulator_active }));
       }
       api.getOperatorActions().then(setOperatorActions).catch(() => {});
     });
@@ -166,22 +148,6 @@ export const OperatorOverridePage: React.FC = () => {
       setErrorMsg(err.message || 'Operation failed. Verify operator authorization and passcode.');
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleUpdateSimulator = async (newConfig: SimulatorConfig) => {
-    setIsUpdatingSim(true);
-    setErrorMsg('');
-    try {
-      await api.setSimulatorConfig(newConfig);
-      setSimConfig(newConfig);
-      setStatusMsg(`Demonstration simulator updated: ${newConfig.enabled ? 'ACTIVE' : 'STANDBY'} at ${newConfig.rate_hz} Hz (${Math.round(newConfig.attack_ratio * 100)}% attack injection)`);
-      const actions = await api.getOperatorActions();
-      setOperatorActions(actions);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to update simulator configuration.');
-    } finally {
-      setIsUpdatingSim(false);
     }
   };
 
@@ -467,94 +433,6 @@ export const OperatorOverridePage: React.FC = () => {
             >
               Apply Freshness Override
             </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Demonstration & Testing Configuration Card */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-xs space-y-5">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center space-x-2">
-            <Sliders className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-              Simulation & Demonstration Configuration
-            </h2>
-          </div>
-          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-            simConfig.enabled ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-500'
-          }`}>
-            {simConfig.enabled ? 'GENERATING SYNTHETIC TELEMETRY' : 'SIMULATION STANDBY'}
-          </span>
-        </div>
-
-        <p className="text-xs text-slate-600 leading-relaxed">
-          Configure real-time synthetic telemetry traffic generation for offline evaluation, demonstration, and stress testing. Adjust packet ingestion frequency and synthetic threat injection ratios.
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-          {/* Simulator Toggle */}
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-md flex flex-col justify-between">
-            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
-              Simulation Generator
-            </label>
-            <div className="mt-2">
-              <button
-                type="button"
-                onClick={() => handleUpdateSimulator({ ...simConfig, enabled: !simConfig.enabled })}
-                disabled={isUpdatingSim}
-                className={`w-full py-1.5 px-3 rounded text-xs font-bold transition-colors ${
-                  simConfig.enabled
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                    : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                }`}
-              >
-                {simConfig.enabled ? 'ENABLED' : 'DISABLED'}
-              </button>
-            </div>
-          </div>
-
-          {/* Rate Hz Slider */}
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-md space-y-2">
-            <div className="flex justify-between text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              <span>Ingestion Frequency</span>
-              <span className="font-mono text-indigo-700">{simConfig.rate_hz.toFixed(1)} Hz</span>
-            </div>
-            <input
-              type="range"
-              min="0.5"
-              max="5.0"
-              step="0.5"
-              value={simConfig.rate_hz}
-              onChange={(e) => handleUpdateSimulator({ ...simConfig, rate_hz: parseFloat(e.target.value) })}
-              className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-            />
-            <div className="flex justify-between text-[9px] text-slate-400 font-mono">
-              <span>0.5 Hz (Slow)</span>
-              <span>1.0 Hz (Nominal)</span>
-              <span>5.0 Hz (Stress)</span>
-            </div>
-          </div>
-
-          {/* Attack Ratio Slider */}
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-md space-y-2">
-            <div className="flex justify-between text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              <span>Attack Injection Ratio</span>
-              <span className="font-mono text-rose-700">{Math.round(simConfig.attack_ratio * 100)}%</span>
-            </div>
-            <input
-              type="range"
-              min="0.0"
-              max="0.8"
-              step="0.05"
-              value={simConfig.attack_ratio}
-              onChange={(e) => handleUpdateSimulator({ ...simConfig, attack_ratio: parseFloat(e.target.value) })}
-              className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-rose-600"
-            />
-            <div className="flex justify-between text-[9px] text-slate-400 font-mono">
-              <span>0% (Clean)</span>
-              <span>25% (Standard)</span>
-              <span>80% (Hostile)</span>
-            </div>
           </div>
         </div>
       </div>

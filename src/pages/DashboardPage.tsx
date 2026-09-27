@@ -15,7 +15,7 @@ import { SecurityAlertsPanel } from '../components/dashboard/SecurityAlertsPanel
 import { TrustedC2Panel } from '../components/dashboard/TrustedC2Panel';
 import { SimplePacketDetailModal } from '../components/dashboard/SimplePacketDetailModal';
 import { CustomTelemetryModal } from '../components/dashboard/CustomTelemetryModal';
-import { Play, Pause, Send } from 'lucide-react';
+import { Play, Pause, Send, Square } from 'lucide-react';
 
 interface DashboardPageProps {
   stats: DashboardStats | null;
@@ -38,105 +38,120 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null);
   const [isCustomTelemetryOpen, setIsCustomTelemetryOpen] = useState(false);
 
-  // Simulator configuration state
-  const [simConfig, setSimConfig] = useState<SimulatorConfig>({
-    enabled: false,
-    rate_hz: 1.0,
-    attack_ratio: 0.25,
-    sources: ["UAV-ALPHA-01", "UAV-BRAVO-02", "UGV-SIERRA-03", "BASE-RELAY-04"]
+  const [demoState, setDemoState] = useState<'STOPPED' | 'RUNNING' | 'PAUSED'>(() => {
+    if (stats?.demo_state) return stats.demo_state;
+    if (stats?.stream_status === 'PAUSED') return 'PAUSED';
+    if (stats?.simulator_active) return 'RUNNING';
+    return 'STOPPED';
   });
-
-  const [isTogglingAction, setIsTogglingAction] = useState(false);
-  const [demoStarted, setDemoStarted] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('securelink_demo_started') === 'true';
-    }
-    return false;
-  });
+  const [actionLoading, setActionLoading] = useState<'STARTING' | 'STOPPING' | 'PAUSING' | 'RESUMING' | null>(null);
 
   useEffect(() => {
-    api.getSimulatorConfig().then((cfg) => {
-      setSimConfig(cfg);
-      if (cfg && cfg.enabled) {
-        setDemoStarted(true);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('securelink_demo_started', 'true');
-        }
+    if (stats?.demo_state) {
+      setDemoState(stats.demo_state);
+    }
+  }, [stats?.demo_state]);
+
+  useEffect(() => {
+    api.getOperatorStatus().then((st) => {
+      if (st && st.demo_state) {
+        setDemoState(st.demo_state as 'STOPPED' | 'RUNNING' | 'PAUSED');
       }
     }).catch(() => {});
+
+    const unsubStatus = wsClient.on('system_status_changed', (data: any) => {
+      if (data && data.demo_state) {
+        setDemoState(data.demo_state);
+      } else if (data && data.stream_status === 'PAUSED') {
+        setDemoState('PAUSED');
+      } else if (data && data.simulator_active === false) {
+        setDemoState('STOPPED');
+      } else if (data && data.simulator_active === true && data.stream_status === 'ACTIVE') {
+        setDemoState('RUNNING');
+      }
+    });
+
+    return () => {
+      unsubStatus();
+    };
   }, []);
 
   const handleStartDemo = async () => {
-    if (isTogglingAction) return;
-    setIsTogglingAction(true);
+    if (actionLoading !== null) return;
+    setActionLoading('STARTING');
     try {
       wsClient.setPaused(false);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('securelink_demo_started', 'true');
-        localStorage.setItem('securelink_stream_paused', 'false');
+      const res = await api.startDemo();
+      if (res && res.demo_state) {
+        setDemoState(res.demo_state);
+      } else {
+        setDemoState('RUNNING');
       }
-      setDemoStarted(true);
-      await api.resumeStream();
-      const newConfig = { ...simConfig, enabled: true };
-      await api.setSimulatorConfig(newConfig);
-      setSimConfig(newConfig);
       onRefreshData();
     } catch (e) {
       console.error('Failed to start demo:', e);
     } finally {
-      setTimeout(() => setIsTogglingAction(false), 300);
+      setActionLoading(null);
+    }
+  };
+
+  const handleStopDemo = async () => {
+    if (actionLoading !== null) return;
+    setActionLoading('STOPPING');
+    try {
+      const res = await api.stopDemo();
+      if (res && res.demo_state) {
+        setDemoState(res.demo_state);
+      } else {
+        setDemoState('STOPPED');
+      }
+      onRefreshData();
+    } catch (e) {
+      console.error('Failed to stop demo:', e);
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handlePause = async () => {
-    if (isTogglingAction) return;
-    setIsTogglingAction(true);
+    if (actionLoading !== null) return;
+    setActionLoading('PAUSING');
     try {
       wsClient.setPaused(true);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('securelink_stream_paused', 'true');
+      const res = await api.pauseStream();
+      if (res && res.demo_state) {
+        setDemoState(res.demo_state);
+      } else {
+        setDemoState('PAUSED');
       }
-      await api.pauseStream();
       onRefreshData();
     } catch (e) {
       console.error('Failed to pause demo:', e);
     } finally {
-      setTimeout(() => setIsTogglingAction(false), 300);
+      setActionLoading(null);
     }
   };
 
   const handleResume = async () => {
-    if (isTogglingAction) return;
-    setIsTogglingAction(true);
+    if (actionLoading !== null) return;
+    setActionLoading('RESUMING');
     try {
       wsClient.setPaused(false);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('securelink_stream_paused', 'false');
-      }
-      await api.resumeStream();
-      if (!simConfig.enabled) {
-        const newConfig = { ...simConfig, enabled: true };
-        await api.setSimulatorConfig(newConfig);
-        setSimConfig(newConfig);
+      const res = await api.resumeStream();
+      if (res && res.demo_state) {
+        setDemoState(res.demo_state);
+      } else {
+        setDemoState('RUNNING');
       }
       onRefreshData();
     } catch (e) {
       console.error('Failed to resume demo:', e);
     } finally {
-      setTimeout(() => setIsTogglingAction(false), 300);
+      setActionLoading(null);
     }
   };
 
-  const isStreamPaused = stats?.stream_status
-    ? stats.stream_status === 'PAUSED'
-    : (typeof window !== 'undefined' && localStorage.getItem('securelink_stream_paused') === 'true');
-
-  const demoState: 'STOPPED' | 'PAUSED' | 'RUNNING' = !demoStarted
-    ? 'STOPPED'
-    : isStreamPaused
-      ? 'PAUSED'
-      : 'RUNNING';
-
+  const isStreamPaused = demoState === 'PAUSED';
   const isTelemetryReceiving = demoState === 'RUNNING';
   const totalProcessed = stats?.adaptive_filter?.evaluated ?? (stats ? stats.authenticated_packets + stats.replay_filtered : packets.length);
   const trustScore = stats ? stats.trust_score : (packets[0]?.trust_score ?? 100);
@@ -169,43 +184,65 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </p>
         </div>
 
-        {/* TACTICAL CONTROLS: DEMO CONTROLLER (START DEMO -> PAUSE -> RESUME) + SEND CUSTOM TELEMETRY */}
+        {/* TACTICAL CONTROLS: DEMO CONTROLLER (START DEMO -> STOP / PAUSE -> STOP / RESUME) + SEND CUSTOM TELEMETRY */}
         <div className="flex items-center space-x-2">
-          {/* DEMO CONTROLLER BUTTON: Strict 3-state machine */}
+          {/* DEMO CONTROLLER BUTTONS: Strict state machine */}
           {demoState === 'STOPPED' && (
             <button
               onClick={handleStartDemo}
-              disabled={isTogglingAction}
+              disabled={actionLoading !== null}
               className="px-3.5 py-1.5 rounded text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
               title="Start simulated telemetry demonstration"
             >
               <Play className="w-3.5 h-3.5 text-emerald-400" />
-              <span>{isTogglingAction ? 'STARTING...' : 'START DEMO'}</span>
+              <span>{actionLoading === 'STARTING' ? 'STARTING...' : 'START DEMO'}</span>
             </button>
           )}
 
           {demoState === 'RUNNING' && (
-            <button
-              onClick={handlePause}
-              disabled={isTogglingAction}
-              className="px-3.5 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
-              title="Pause telemetry demonstration"
-            >
-              <Pause className="w-3.5 h-3.5" />
-              <span>{isTogglingAction ? 'PAUSING...' : 'PAUSE'}</span>
-            </button>
+            <>
+              <button
+                onClick={handleStopDemo}
+                disabled={actionLoading !== null}
+                className="px-3.5 py-1.5 rounded text-xs font-bold bg-rose-700 hover:bg-rose-800 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                title="Stop telemetry demonstration and reset run sequence"
+              >
+                <Square className="w-3.5 h-3.5 text-rose-200 fill-current" />
+                <span>{actionLoading === 'STOPPING' ? 'STOPPING...' : 'STOP'}</span>
+              </button>
+              <button
+                onClick={handlePause}
+                disabled={actionLoading !== null}
+                className="px-3.5 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                title="Pause telemetry demonstration (preserves state)"
+              >
+                <Pause className="w-3.5 h-3.5" />
+                <span>{actionLoading === 'PAUSING' ? 'PAUSING...' : 'PAUSE'}</span>
+              </button>
+            </>
           )}
 
           {demoState === 'PAUSED' && (
-            <button
-              onClick={handleResume}
-              disabled={isTogglingAction}
-              className="px-3.5 py-1.5 rounded text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
-              title="Resume telemetry demonstration"
-            >
-              <Play className="w-3.5 h-3.5" />
-              <span>{isTogglingAction ? 'RESUMING...' : 'RESUME'}</span>
-            </button>
+            <>
+              <button
+                onClick={handleStopDemo}
+                disabled={actionLoading !== null}
+                className="px-3.5 py-1.5 rounded text-xs font-bold bg-rose-700 hover:bg-rose-800 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                title="Stop telemetry demonstration and reset run sequence"
+              >
+                <Square className="w-3.5 h-3.5 text-rose-200 fill-current" />
+                <span>{actionLoading === 'STOPPING' ? 'STOPPING...' : 'STOP'}</span>
+              </button>
+              <button
+                onClick={handleResume}
+                disabled={actionLoading !== null}
+                className="px-3.5 py-1.5 rounded text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                title="Resume telemetry demonstration from current state"
+              >
+                <Play className="w-3.5 h-3.5 text-sky-200" />
+                <span>{actionLoading === 'RESUMING' ? 'RESUMING...' : 'RESUME'}</span>
+              </button>
+            </>
           )}
 
           {/* Send Custom Telemetry Button */}
@@ -228,9 +265,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             SYSTEM STATUS
           </span>
           <div className="mt-2 flex items-center space-x-1.5">
-            <span className={`w-2 h-2 rounded-full ${isStreamPaused ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></span>
+            <span className={`w-2 h-2 rounded-full ${
+              demoState === 'PAUSED' ? 'bg-amber-500 animate-pulse' : demoState === 'RUNNING' ? 'bg-emerald-500' : 'bg-slate-400'
+            }`}></span>
             <span className="text-sm font-bold text-slate-800">
-              {isStreamPaused ? 'PAUSED' : 'ONLINE'}
+              {demoState === 'PAUSED' ? 'PAUSED' : demoState === 'RUNNING' ? 'ONLINE' : 'STANDBY'}
             </span>
           </div>
         </div>

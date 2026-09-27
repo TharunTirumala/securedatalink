@@ -108,6 +108,9 @@ export const App: React.FC = () => {
       if (statusData.simulator_active !== undefined) {
         setStats((prev) => prev ? { ...prev, simulator_active: statusData.simulator_active } : prev);
       }
+      if (statusData.demo_state) {
+        setStats((prev) => prev ? { ...prev, demo_state: statusData.demo_state } : prev);
+      }
     });
 
     const unsubFile = wsClient.on('file_processed', () => {

@@ -32,6 +32,17 @@ async def lifespan(app: FastAPI):
         await init_db()
         await pipeline.initialize_state()
         await freshness_verifier.initialize_state()
+        from app.database.connection import get_system_state
+        saved_demo_state = await get_system_state("demo_state", "STOPPED")
+        if saved_demo_state == "RUNNING":
+            simulator.enabled = True
+            pipeline.stream_paused = False
+        elif saved_demo_state == "PAUSED":
+            simulator.enabled = True
+            pipeline.stream_paused = True
+        else:
+            simulator.enabled = False
+            pipeline.stream_paused = False
         _initialized = True
 
     is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
@@ -68,6 +79,17 @@ async def ensure_db_initialized(request, call_next):
             await init_db()
             await pipeline.initialize_state()
             await freshness_verifier.initialize_state()
+            from app.database.connection import get_system_state
+            saved_demo_state = await get_system_state("demo_state", "STOPPED")
+            if saved_demo_state == "RUNNING":
+                simulator.enabled = True
+                pipeline.stream_paused = False
+            elif saved_demo_state == "PAUSED":
+                simulator.enabled = True
+                pipeline.stream_paused = True
+            else:
+                simulator.enabled = False
+                pipeline.stream_paused = False
             _initialized = True
         except Exception as e:
             logger.error(f"Error during lazy initialization: {e}")

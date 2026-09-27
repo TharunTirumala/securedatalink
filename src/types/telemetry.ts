@@ -87,7 +87,8 @@ export interface DashboardStats {
   replay_filtered: number;
   system_security_status: string;
   trust_score: number;
-  stream_status: 'ACTIVE' | 'PAUSED';
+  stream_status: 'ACTIVE' | 'PAUSED' | 'STOPPED';
+  demo_state?: 'STOPPED' | 'RUNNING' | 'PAUSED';
   active_key_id: string;
   simulator_active: boolean;
   adaptive_filter: {

@@ -37,6 +37,12 @@ class TelemetrySimulator:
             self.sources = sources
         logger.info(f"Simulator config updated: enabled={self.enabled}, rate={self.rate_hz}Hz, attack_ratio={self.attack_ratio}")
 
+    def reset_run(self):
+        """Resets sequence counters and history nonces for a fresh demonstration run."""
+        self._sequence_counters = {s: 1880 for s in self.sources}
+        self._history_nonces = []
+        logger.info("Simulator: Run counters and history reset for fresh run.")
+
     async def start(self):
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run_loop())
