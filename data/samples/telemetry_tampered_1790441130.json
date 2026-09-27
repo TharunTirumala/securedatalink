@@ -1,0 +1,16 @@
+[
+  {
+    "packet_id": "PKT-TAMP-1790441130",
+    "sequence_num": 2002,
+    "source": "UAV-BRAVO-02",
+    "timestamp": 1790441130.9027345,
+    "packet_type": "Telemetry",
+    "key_id": "SK-ALPHA-042",
+    "iv": "1c53cca525a0d77b5e61f022",
+    "tag": "75501d9baae16cc71d37633efac40e39",
+    "ciphertext": "8619eb4e2175686b1bc0b3bdf255223756e2ca568e9c7fbc378578aaaf4d6c5f2b9bcd1834bcf995aa04ec14dfe3e77f9d71227fe40acb6adf01c7c9578ebad498a6ca7c893317d4ff66f6e937eb567c5c3f69327bcb347baf5825149bbe1b1b5b6f5a5d60ff3d8576d03cbbeca9583f0737c60b8df34abeac6e2e1cdf94c9e1c53c7dc311f83ff940623b3445eddc4e64d662d484f6b4421d0f3b3b5a08b1e66ab0cf704e0b9ece505712eef52694f67e95cd40ffb43090de9a25e8c32f624d4f9da3d615779ac95916eabea97951d95e52826d706ddf0f177c02",
+    "signature": "3045022041693e21e24bc1aedbb26cc7b36cb0b621ba788622b57a87b5132bc428e2b6de022100f6cbf540e45822345867b84fbd2fc2811c0368ef1a0df78b455019d8440f9b90",
+    "payload_hash": "0a2baa9d8c5aae3ce45286428f15c889023d91bb52c2bba07dd10f958d92b80d",
+    "simulated": false
+  }
+]

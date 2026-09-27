@@ -1,0 +1,167 @@
+import React, { useState } from 'react';
+import { Packet } from '../types/telemetry';
+import { Badge } from '../components/common/Badge';
+import {
+  FileCheck2,
+  Lock,
+  Clock,
+  Key,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  Hash,
+  Binary
+} from 'lucide-react';
+
+interface PacketVerificationPageProps {
+  packets: Packet[];
+}
+
+export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ packets }) => {
+  const [selectedIdx, setSelectedIdx] = useState(0);
+
+  const activePacket = packets[selectedIdx] || packets[0];
+
+  return (
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Page Header */}
+      <div className="pb-4 border-b border-slate-200">
+        <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+          Packet Verification & Cryptographic Deep Dive
+        </h1>
+        <p className="text-xs text-slate-500 font-medium">
+          Step-by-step cryptographic verification: Nonce freshness, AES-256-GCM, ECDSA P-256, and SHA-256 digest
+        </p>
+      </div>
+
+      {packets.length === 0 ? (
+        <div className="p-12 text-center bg-white border border-slate-200 rounded-lg text-slate-400 text-sm">
+          No packets available to verify. Please enable Simulated Demonstration Mode or submit a telemetry packet.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Packet Selector List */}
+          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm space-y-2 h-[680px] flex flex-col">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+              Select Packet to Inspect ({packets.length})
+            </h3>
+            <div className="divide-y divide-slate-100 overflow-y-auto flex-1">
+              {packets.slice(0, 30).map((pkt, idx) => (
+                <button
+                  key={pkt.packet_id + idx}
+                  onClick={() => setSelectedIdx(idx)}
+                  className={`w-full text-left p-3 rounded-md transition-colors flex items-center justify-between ${
+                    idx === selectedIdx ? 'bg-sky-50 border border-sky-200' : 'hover:bg-slate-50'
+                  }`}
+                >
+                  <div>
+                    <div className="font-mono font-bold text-xs text-slate-900">
+                      {pkt.packet_id}
+                    </div>
+                    <div className="text-[11px] text-slate-500">{pkt.source}</div>
+                  </div>
+                  <div className="text-right space-y-1">
+                    <Badge label={pkt.classification} type="classification" />
+                    <div className="text-[10px] font-mono text-slate-400">
+                      Trust: {pkt.trust_score}/100
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Detailed Verification Inspector */}
+          <div className="lg:col-span-2 bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-5">
+            {/* Header info */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200">
+              <div>
+                <span className="text-[11px] font-mono text-slate-400 uppercase font-semibold">Active Frame</span>
+                <h2 className="text-lg font-bold text-slate-900 font-mono">{activePacket.packet_id}</h2>
+                <div className="text-xs text-slate-500">
+                  Node: <span className="font-semibold text-slate-700">{activePacket.source}</span> • Key ID: <span className="font-mono text-sky-700 font-semibold">{activePacket.key_id}</span>
+                </div>
+              </div>
+              <div className="flex flex-col items-end space-y-1.5">
+                <Badge label={activePacket.classification} type="classification" />
+                <Badge label={activePacket.action} type="action" />
+              </div>
+            </div>
+
+            {/* Stage-by-stage verification panels */}
+            <div className="space-y-4">
+              {/* 1. Freshness & Dynamic Nonce */}
+              <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <Clock className="w-4 h-4 text-sky-700" />
+                    <span className="text-xs font-bold text-slate-800 uppercase">1. Dynamic Nonce & Freshness Verification</span>
+                  </div>
+                  <Badge label={activePacket.freshness_status} type="verification" />
+                </div>
+                <p className="text-xs text-slate-600 mb-2">
+                  Verifies that the packet timestamp falls within the authorized 5.0-second sliding window and that the IV/nonce has not been replayed.
+                </p>
+                <div className="font-mono text-[11px] bg-white p-2.5 rounded border border-slate-200 text-slate-700">
+                  IV / Nonce: <span className="text-sky-700 font-bold">{activePacket.iv_hex || 'N/A'}</span>
+                </div>
+              </div>
+
+              {/* 2. AES-256-GCM Authenticated Decryption */}
+              <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <Lock className="w-4 h-4 text-emerald-700" />
+                    <span className="text-xs font-bold text-slate-800 uppercase">2. AES-256-GCM Tag & Decryption</span>
+                  </div>
+                  <Badge label={activePacket.auth_status} type="verification" />
+                </div>
+                <p className="text-xs text-slate-600 mb-2">
+                  Validates the 128-bit GHASH authentication tag using the active AES-256 session key. Any single-bit alteration triggers an authentication failure.
+                </p>
+                <div className="space-y-1.5 font-mono text-[11px] bg-white p-2.5 rounded border border-slate-200 text-slate-700">
+                  <div>Auth Tag: <span className="text-emerald-700 font-bold">{activePacket.tag_hex || 'N/A'}</span></div>
+                  <div className="truncate">Ciphertext: <span className="text-slate-500">{activePacket.ciphertext_preview || 'N/A'}</span></div>
+                </div>
+              </div>
+
+              {/* 3. ECDSA NIST P-256 Signature */}
+              <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <Key className="w-4 h-4 text-amber-700" />
+                    <span className="text-xs font-bold text-slate-800 uppercase">3. ECDSA Digital Signature (NIST P-256)</span>
+                  </div>
+                  <Badge label={activePacket.sig_status} type="verification" />
+                </div>
+                <p className="text-xs text-slate-600 mb-2">
+                  Validates non-repudiation and node identity against the registered public key for {activePacket.source}.
+                </p>
+                <div className="font-mono text-[11px] bg-white p-2.5 rounded border border-slate-200 text-slate-700 truncate">
+                  Signature: <span className="text-amber-700">{activePacket.signature_hex || 'N/A'}</span>
+                </div>
+              </div>
+
+              {/* 4. SHA-256 Integrity Verification */}
+              <div className="p-4 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <Hash className="w-4 h-4 text-purple-700" />
+                    <span className="text-xs font-bold text-slate-800 uppercase">4. Cryptographic Integrity Digest (SHA-256)</span>
+                  </div>
+                  <Badge label={activePacket.integrity_status} type="verification" />
+                </div>
+                <p className="text-xs text-slate-600 mb-2">
+                  Re-computes the SHA-256 hash of the decrypted payload and verifies equivalence with the header-declared digest.
+                </p>
+                <div className="font-mono text-[11px] bg-white p-2.5 rounded border border-slate-200 text-slate-700 truncate">
+                  Digest: <span className="text-purple-700 font-bold">{activePacket.payload_hash || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
