@@ -3,8 +3,7 @@ import os
 from pydantic import BaseModel, Field
 
 # Base Directory paths
-BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
-BASE_DIR = BACKEND_DIR.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 INCOMING_DIR = DATA_DIR / "incoming"
 PROCESSED_DIR = DATA_DIR / "processed"
@@ -22,6 +21,7 @@ class Settings(BaseModel):
     TRL_LEVEL: str = "TRL 3/4 Proof-of-Concept (Laboratory Validation)"
     
     # Directory paths
+    BASE_DIR: Path = BASE_DIR
     DATA_DIR: Path = DATA_DIR
     INCOMING_DIR: Path = INCOMING_DIR
     PROCESSED_DIR: Path = PROCESSED_DIR
@@ -30,10 +30,10 @@ class Settings(BaseModel):
     DB_PATH: Path = DB_PATH
 
     # Network & Ingestion
-    HOST: str = os.environ.get("HOST", "0.0.0.0")
-    PORT: int = int(os.environ.get("PORT", 8000))
-    UDP_HOST: str = os.environ.get("UDP_HOST", "0.0.0.0")
-    UDP_PORT: int = int(os.environ.get("UDP_PORT", 9871))
+    HOST: str = os.getenv("HOST", "0.0.0.0")
+    PORT: int = int(os.getenv("PORT", "8000"))
+    UDP_HOST: str = "0.0.0.0"
+    UDP_PORT: int = 9871
     
     # Cryptographic Pipeline parameters
     FRESHNESS_WINDOW_SECONDS: float = 5.0

@@ -1,6 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from app.core.config import settings
 from app.core.logging import logger
 from app.database.connection import init_db
@@ -36,7 +39,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS configuration for local frontend development
+# CORS configuration for frontend development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -53,31 +56,43 @@ app.include_router(ws_router)
 async def health_check():
     return {"status": "HEALTHY", "telemetry": "CONNECTED"}
 
-# Locate frontend static dist folder for unified single-service hosting
-import os
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+@app.get("/api/system/info")
+async def system_info():
+    return {
+        "system": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "status": "ONLINE",
+        "scope": settings.TRL_LEVEL,
+        "encryption": "AES-256-GCM ACTIVE",
+        "signature": "ECDSA NIST P-256",
+        "documentation": "/docs"
+    }
 
-DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dist")
-INDEX_PATH = os.path.join(DIST_DIR, "index.html")
+# Static SPA mounting if dist exists
+DIST_DIR = settings.BASE_DIR / "dist"
+if DIST_DIR.exists() and (DIST_DIR / "index.html").exists():
+    if (DIST_DIR / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")
 
-if os.path.exists(INDEX_PATH):
-    assets_dir = os.path.join(DIST_DIR, "assets")
-    if os.path.exists(assets_dir):
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    @app.get("/favicon.svg", include_in_schema=False)
+    async def favicon():
+        fav = DIST_DIR / "favicon.svg"
+        if fav.exists():
+            return FileResponse(fav)
+        return {"status": "not found"}
 
-    @app.get("/")
-    async def serve_index():
-        return FileResponse(INDEX_PATH)
+    @app.get("/", include_in_schema=False)
+    async def serve_root():
+        return FileResponse(DIST_DIR / "index.html")
 
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        if full_path.startswith("api/") or full_path.startswith("ws") or full_path in ["docs", "openapi.json", "redoc"]:
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa_fallback(full_path: str):
+        if full_path.startswith("api") or full_path.startswith("ws") or full_path in ("docs", "redoc", "openapi.json", "health"):
             return None
-        candidate = os.path.join(DIST_DIR, full_path)
-        if os.path.isfile(candidate):
-            return FileResponse(candidate)
-        return FileResponse(INDEX_PATH)
+        file_path = DIST_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(DIST_DIR / "index.html")
 else:
     @app.get("/")
     async def root():

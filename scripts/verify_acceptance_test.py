@@ -5,8 +5,8 @@ import json
 import httpx
 from pathlib import Path
 
-# Add backend to path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.generate_sample_file import create_packet
 from app.core.config import settings
 
