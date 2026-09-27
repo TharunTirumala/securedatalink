@@ -26,7 +26,9 @@ AUTHORIZED_NODES = {
     "UGV-SIERRA-03",
     "BASE-RELAY-04",
     "SYS-RELAY-DEFAULT",
-    "TACTICAL-TEST-NODE"
+    "TACTICAL-TEST-NODE",
+    "CUSTOM-001",
+    "UAV-001"
 }
 
 class TacticalProcessingPipeline:
@@ -88,7 +90,7 @@ class TacticalProcessingPipeline:
         format_valid = bool(iv_hex and tag_hex and ciphertext_hex and signature_hex and payload_hash)
         
         # Check stream pause
-        if self.stream_paused:
+        if self.stream_paused and not raw_data.get("allow_custom_ingest", False):
             logger.info(f"Packet {packet_id} skipped: Stream is currently paused by operator")
             return {
                 "packet_id": packet_id,
@@ -197,7 +199,13 @@ class TacticalProcessingPipeline:
         # -------------------------------------------------------------
         # Stage 7: Packet Classification
         # -------------------------------------------------------------
-        source_authorized = source in AUTHORIZED_NODES
+        source_authorized = (
+            source in AUTHORIZED_NODES
+            or source.startswith("CUSTOM-")
+            or source.startswith("UAV-")
+            or source.startswith("UGV-")
+            or source.startswith("BASE-")
+        )
         is_source_filtered = adaptive_filter.is_source_filtered(source)
         
         classification, action = packet_classifier.classify(

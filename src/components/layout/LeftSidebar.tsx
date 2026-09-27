@@ -6,7 +6,6 @@ import {
   ShieldAlert,
   ScrollText,
   KeyRound,
-  Network,
   SlidersHorizontal,
   Archive,
   TerminalSquare
@@ -38,7 +37,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       items: [
         { id: 'logs', label: 'Audit History', icon: ScrollText },
         { id: 'keys', label: 'Key Management', icon: KeyRound },
-        { id: 'architecture', label: 'System Architecture', icon: Network },
       ]
     },
     {

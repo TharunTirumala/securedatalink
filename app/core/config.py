@@ -53,7 +53,7 @@ class Settings(BaseModel):
     SYNC_DATABASE_URL: str = f"sqlite:///{DB_PATH.as_posix()}"
     
     # Demonstration Mode
-    DEMO_DEFAULT_ENABLED: bool = True
+    DEMO_DEFAULT_ENABLED: bool = False
     DEMO_DEFAULT_RATE_HZ: float = 1.0
     DEMO_DEFAULT_ATTACK_RATIO: float = 0.25
 

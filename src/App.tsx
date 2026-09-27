@@ -17,7 +17,6 @@ import { PacketVerificationPage } from './pages/PacketVerificationPage';
 import { ThreatDetectionPage } from './pages/ThreatDetectionPage';
 import { SecurityLogsPage } from './pages/SecurityLogsPage';
 import { KeyManagementPage } from './pages/KeyManagementPage';
-import { ArchitecturePage } from './pages/ArchitecturePage';
 import { OperatorOverridePage } from './pages/OperatorOverridePage';
 import { DataArchivePage } from './pages/DataArchivePage';
 
@@ -179,10 +178,6 @@ export const App: React.FC = () => {
               keyMetadata={keyMetadata}
               onRefreshData={loadInitialData}
             />
-          )}
-
-          {activeTab === 'architecture' && (
-            <ArchitecturePage />
           )}
 
           {activeTab === 'override' && (

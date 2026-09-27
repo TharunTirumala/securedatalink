@@ -75,15 +75,22 @@ export const api = {
   },
 
   async ingestPacket(rawPacket: any): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE}/telemetry/ingest`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rawPacket)
-      });
-      if (res.ok) return await res.json();
-    } catch (e) {}
-    return { status: 'ACCEPTED', packet_id: 'PKT-CLIENT-SIM-' + Date.now().toString().slice(-5) };
+    const res = await fetch(`${API_BASE}/telemetry/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rawPacket)
+    });
+    if (!res.ok) {
+      let errMsg = `Ingestion failed (HTTP ${res.status})`;
+      try {
+        const errJson = await res.json();
+        if (errJson && errJson.detail) {
+          errMsg = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+        }
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+    return await res.json();
   },
 
   async getC2Stream(): Promise<any> {

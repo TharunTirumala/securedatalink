@@ -278,3 +278,68 @@ async def test_verify_and_archive_flow():
             # If generated packet was injected attack, it properly rejected
             assert res_verif.status_code == 422
 
+@pytest.mark.asyncio
+async def test_custom_telemetry_ingestion_and_pipeline_execution():
+    import time
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # 1. Reject missing device ID (HTTP 422)
+        res_missing_id = await ac.post("/api/v1/telemetry/ingest", json={
+            "latitude": 34.0522,
+            "longitude": -118.2437,
+            "altitude": 250.0,
+            "speed": 25.0,
+            "heading": 180.0
+        })
+        assert res_missing_id.status_code == 422
+        assert "Device ID / Source is required" in res_missing_id.json()["detail"]
+
+        # 2. Reject out-of-range coordinates (HTTP 422)
+        res_bad_lat = await ac.post("/api/v1/telemetry/ingest", json={
+            "device_id": "CUSTOM-001",
+            "latitude": 125.0, # Invalid latitude
+            "longitude": -118.2437,
+            "altitude": 250.0,
+            "speed": 25.0,
+            "heading": 180.0
+        })
+        assert res_bad_lat.status_code == 422
+        assert "Latitude must be a numeric value between -90.0 and 90.0" in res_bad_lat.json()["detail"]
+
+        # 3. Accept valid custom telemetry and verify full 10-stage execution
+        now_ts = time.time()
+        custom_payload = {
+            "device_id": "CUSTOM-001",
+            "latitude": 37.774929,
+            "longitude": -122.419418,
+            "altitude": 180.5,
+            "speed": 32.4,
+            "heading": 270.0,
+            "timestamp": now_ts,
+            "battery_pct": 94.5,
+            "flight_mode": "AUTONOMOUS_PATROL"
+        }
+        res_custom = await ac.post("/api/v1/telemetry/ingest", json=custom_payload)
+        assert res_custom.status_code == 200
+        data = res_custom.json()
+        assert data["action"] == "ACCEPTED"
+        assert data["classification"] == "AUTHENTIC"
+        assert data["trust_score"] == 100
+        assert data["auth_status"] == "VERIFIED"
+        assert data["freshness_status"] == "PASS"
+        assert data["sig_status"] == "VERIFIED"
+        assert data["integrity_status"] == "PASS"
+        assert data["simulated"] is False
+        assert data["packet_type"] == "Custom Telemetry"
+        assert data["source"] == "CUSTOM-001"
+        assert data["decrypted_payload"]["latitude"] == 37.774929
+        assert data["decrypted_payload"]["flight_mode"] == "AUTONOMOUS_PATROL"
+
+        # 4. Verify packet appears in telemetry packets list
+        res_packets = await ac.get(f"/api/v1/telemetry/packets/{data['packet_id']}")
+        assert res_packets.status_code == 200
+        pkt_data = res_packets.json()
+        assert pkt_data["packet_id"] == data["packet_id"]
+        assert pkt_data["simulated"] is False
+        assert pkt_data["source"] == "CUSTOM-001"
+
+

@@ -81,7 +81,14 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
 
                     {/* SOURCE */}
                     <td className="py-3 px-4 font-medium text-slate-700 whitespace-nowrap truncate">
-                      {pkt.source}
+                      <div className="flex items-center space-x-1.5">
+                        <span className="truncate">{pkt.source}</span>
+                        {(pkt.simulated === false || pkt.packet_type === "Custom Telemetry") && (
+                          <span className="text-[9px] font-sans px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-bold border border-indigo-200 shrink-0">
+                            CUSTOM
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* TIME */}

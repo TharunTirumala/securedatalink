@@ -14,7 +14,8 @@ import { RealTimeTelemetryFeed } from '../components/dashboard/RealTimeTelemetry
 import { SecurityAlertsPanel } from '../components/dashboard/SecurityAlertsPanel';
 import { TrustedC2Panel } from '../components/dashboard/TrustedC2Panel';
 import { SimplePacketDetailModal } from '../components/dashboard/SimplePacketDetailModal';
-import { Play, Pause } from 'lucide-react';
+import { CustomTelemetryModal } from '../components/dashboard/CustomTelemetryModal';
+import { Play, Pause, Send } from 'lucide-react';
 
 interface DashboardPageProps {
   stats: DashboardStats | null;
@@ -35,75 +36,108 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigate
 }) => {
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null);
+  const [isCustomTelemetryOpen, setIsCustomTelemetryOpen] = useState(false);
 
   // Simulator configuration state
   const [simConfig, setSimConfig] = useState<SimulatorConfig>({
-    enabled: true,
+    enabled: false,
     rate_hz: 1.0,
     attack_ratio: 0.25,
     sources: ["UAV-ALPHA-01", "UAV-BRAVO-02", "UGV-SIERRA-03", "BASE-RELAY-04"]
   });
 
+  const [isTogglingAction, setIsTogglingAction] = useState(false);
+  const [demoStarted, setDemoStarted] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('securelink_demo_started') === 'true';
+    }
+    return false;
+  });
+
   useEffect(() => {
-    api.getSimulatorConfig().then(setSimConfig).catch(() => {});
+    api.getSimulatorConfig().then((cfg) => {
+      setSimConfig(cfg);
+      if (cfg && cfg.enabled) {
+        setDemoStarted(true);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('securelink_demo_started', 'true');
+        }
+      }
+    }).catch(() => {});
   }, []);
 
-  const [isTogglingPause, setIsTogglingPause] = useState(false);
-
   const handleStartDemo = async () => {
+    if (isTogglingAction) return;
+    setIsTogglingAction(true);
     try {
+      wsClient.setPaused(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('securelink_demo_started', 'true');
+        localStorage.setItem('securelink_stream_paused', 'false');
+      }
+      setDemoStarted(true);
+      await api.resumeStream();
       const newConfig = { ...simConfig, enabled: true };
       await api.setSimulatorConfig(newConfig);
       setSimConfig(newConfig);
       onRefreshData();
     } catch (e) {
       console.error('Failed to start demo:', e);
-    }
-  };
-
-  const handleStopDemo = async () => {
-    try {
-      const newConfig = { ...simConfig, enabled: false };
-      await api.setSimulatorConfig(newConfig);
-      setSimConfig(newConfig);
-      onRefreshData();
-    } catch (e) {
-      console.error('Failed to stop demo:', e);
+    } finally {
+      setTimeout(() => setIsTogglingAction(false), 300);
     }
   };
 
   const handlePause = async () => {
-    if (isTogglingPause) return;
-    setIsTogglingPause(true);
+    if (isTogglingAction) return;
+    setIsTogglingAction(true);
     try {
       wsClient.setPaused(true);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('securelink_stream_paused', 'true');
+      }
       await api.pauseStream();
       onRefreshData();
     } catch (e) {
-      console.error('Failed to pause stream:', e);
+      console.error('Failed to pause demo:', e);
     } finally {
-      setTimeout(() => setIsTogglingPause(false), 300);
+      setTimeout(() => setIsTogglingAction(false), 300);
     }
   };
 
   const handleResume = async () => {
-    if (isTogglingPause) return;
-    setIsTogglingPause(true);
+    if (isTogglingAction) return;
+    setIsTogglingAction(true);
     try {
       wsClient.setPaused(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('securelink_stream_paused', 'false');
+      }
       await api.resumeStream();
+      if (!simConfig.enabled) {
+        const newConfig = { ...simConfig, enabled: true };
+        await api.setSimulatorConfig(newConfig);
+        setSimConfig(newConfig);
+      }
       onRefreshData();
     } catch (e) {
-      console.error('Failed to resume stream:', e);
+      console.error('Failed to resume demo:', e);
     } finally {
-      setTimeout(() => setIsTogglingPause(false), 300);
+      setTimeout(() => setIsTogglingAction(false), 300);
     }
   };
 
   const isStreamPaused = stats?.stream_status
     ? stats.stream_status === 'PAUSED'
     : (typeof window !== 'undefined' && localStorage.getItem('securelink_stream_paused') === 'true');
-  const isTelemetryReceiving = !isStreamPaused && (simConfig.enabled || packets.length > 0);
+
+  const demoState: 'STOPPED' | 'PAUSED' | 'RUNNING' = !demoStarted
+    ? 'STOPPED'
+    : isStreamPaused
+      ? 'PAUSED'
+      : 'RUNNING';
+
+  const isTelemetryReceiving = demoState === 'RUNNING';
   const totalProcessed = stats?.adaptive_filter?.evaluated ?? (stats ? stats.authenticated_packets + stats.replay_filtered : packets.length);
   const trustScore = stats ? stats.trust_score : (packets[0]?.trust_score ?? 100);
   const threatsBlocked = stats ? stats.replay_filtered : threats.filter(t => t.action === 'BLOCKED').length;
@@ -118,12 +152,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               SecureLink
             </h1>
             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold border ${
-              isStreamPaused
+              demoState === 'PAUSED'
                 ? 'bg-amber-50 text-amber-800 border-amber-200'
-                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : demoState === 'RUNNING'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-slate-100 text-slate-700 border-slate-200'
             }`}>
-              <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${isStreamPaused ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
-              {isStreamPaused ? 'STREAM PAUSED' : 'ONLINE'}
+              <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                demoState === 'PAUSED' ? 'bg-amber-500' : demoState === 'RUNNING' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+              }`}></span>
+              {demoState === 'PAUSED' ? 'DEMO PAUSED' : demoState === 'RUNNING' ? 'ONLINE' : 'STANDBY'}
             </span>
           </div>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
@@ -131,57 +169,54 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </p>
         </div>
 
-        {/* TACTICAL CONTROLS: PAUSE/RESUME STREAM + DEMO MODE */}
+        {/* TACTICAL CONTROLS: DEMO CONTROLLER (START DEMO -> PAUSE -> RESUME) + SEND CUSTOM TELEMETRY */}
         <div className="flex items-center space-x-2">
-          {/* Pause / Resume Button - Always accessible */}
-          {isStreamPaused ? (
+          {/* DEMO CONTROLLER BUTTON: Strict 3-state machine */}
+          {demoState === 'STOPPED' && (
             <button
-              onClick={handleResume}
-              disabled={isTogglingPause}
-              className="px-3.5 py-1.5 rounded text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white shadow-xs transition-colors flex items-center space-x-1.5 disabled:opacity-50 cursor-pointer"
-              title="Resume tactical telemetry stream processing"
+              onClick={handleStartDemo}
+              disabled={isTogglingAction}
+              className="px-3.5 py-1.5 rounded text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              title="Start simulated telemetry demonstration"
             >
-              <Play className="w-3.5 h-3.5" />
-              <span>{isTogglingPause ? 'RESUMING...' : 'RESUME STREAM'}</span>
-            </button>
-          ) : (
-            <button
-              onClick={handlePause}
-              disabled={isTogglingPause}
-              className="px-3.5 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition-colors flex items-center space-x-1.5 disabled:opacity-50 cursor-pointer"
-              title="Pause tactical telemetry stream processing"
-            >
-              <Pause className="w-3.5 h-3.5" />
-              <span>{isTogglingPause ? 'PAUSING...' : 'PAUSE STREAM'}</span>
+              <Play className="w-3.5 h-3.5 text-emerald-400" />
+              <span>{isTogglingAction ? 'STARTING...' : 'START DEMO'}</span>
             </button>
           )}
 
-          {/* Simulator Controls */}
-          {simConfig.enabled ? (
-            <div className="flex items-center space-x-2">
-              <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                <span className="relative flex h-2 w-2 mr-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                </span>
-                DEMO ACTIVE
-              </span>
-              <button
-                onClick={handleStopDemo}
-                className="px-3 py-1.5 rounded text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
-              >
-                STOP DEMO
-              </button>
-            </div>
-          ) : (
+          {demoState === 'RUNNING' && (
             <button
-              onClick={handleStartDemo}
-              className="px-3 py-1.5 rounded text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors flex items-center space-x-1"
+              onClick={handlePause}
+              disabled={isTogglingAction}
+              className="px-3.5 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              title="Pause telemetry demonstration"
             >
-              <Play className="w-3 h-3 text-slate-500" />
-              <span>DEMO MODE</span>
+              <Pause className="w-3.5 h-3.5" />
+              <span>{isTogglingAction ? 'PAUSING...' : 'PAUSE'}</span>
             </button>
           )}
+
+          {demoState === 'PAUSED' && (
+            <button
+              onClick={handleResume}
+              disabled={isTogglingAction}
+              className="px-3.5 py-1.5 rounded text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              title="Resume telemetry demonstration"
+            >
+              <Play className="w-3.5 h-3.5" />
+              <span>{isTogglingAction ? 'RESUMING...' : 'RESUME'}</span>
+            </button>
+          )}
+
+          {/* Send Custom Telemetry Button */}
+          <button
+            onClick={() => setIsCustomTelemetryOpen(true)}
+            className="px-3.5 py-1.5 rounded text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
+            title="Inject custom tactical telemetry packet"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>SEND CUSTOM TELEMETRY</span>
+          </button>
         </div>
       </div>
 
@@ -270,7 +305,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* 4. MAIN SECTION — REAL-TIME TELEMETRY AUTHENTICATION FEED (LATEST 10 PACKETS) */}
       <RealTimeTelemetryFeed
         packets={packets}
-        simulatorActive={simConfig.enabled}
+        simulatorActive={demoState === 'RUNNING'}
         onSelectPacket={(pkt) => setSelectedPacket(pkt)}
       />
 
@@ -293,6 +328,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         packet={selectedPacket}
         onClose={() => setSelectedPacket(null)}
         onNavigateToVerification={() => onNavigate?.('verification')}
+      />
+
+      {/* CUSTOM TELEMETRY MODAL */}
+      <CustomTelemetryModal
+        isOpen={isCustomTelemetryOpen}
+        onClose={() => setIsCustomTelemetryOpen(false)}
+        onTelemetrySubmitted={() => onRefreshData()}
       />
     </div>
   );
