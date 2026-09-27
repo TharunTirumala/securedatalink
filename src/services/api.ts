@@ -167,10 +167,13 @@ export const api = {
       })
     });
     if (!res.ok) {
-      let errorMsg = 'Failed to apply security override';
+      let errorMsg = `Security override rejected (HTTP ${res.status})`;
       try {
-        const data = await res.json();
-        if (data.detail) errorMsg = data.detail;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await res.json();
+          if (data.detail) errorMsg = data.detail;
+        }
       } catch {}
       throw new Error(errorMsg);
     }
@@ -252,10 +255,13 @@ export const api = {
       })
     });
     if (!res.ok) {
-      let msg = 'Failed to archive data';
+      let msg = `Failed to archive data (HTTP ${res.status})`;
       try {
-        const err = await res.json();
-        if (err.detail) msg = err.detail;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const err = await res.json();
+          if (err.detail) msg = err.detail;
+        }
       } catch {}
       throw new Error(msg);
     }
@@ -286,10 +292,13 @@ export const api = {
       })
     });
     if (!res.ok) {
-      let msg = 'Failed to restore packet';
+      let msg = `Failed to restore packet (HTTP ${res.status})`;
       try {
-        const err = await res.json();
-        if (err.detail) msg = err.detail;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const err = await res.json();
+          if (err.detail) msg = err.detail;
+        }
       } catch {}
       throw new Error(msg);
     }

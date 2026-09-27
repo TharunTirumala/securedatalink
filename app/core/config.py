@@ -4,16 +4,23 @@ from pydantic import BaseModel, Field
 
 # Base Directory paths
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = BASE_DIR / "data"
+
+# On Vercel / serverless runtimes, only /tmp is writable
+is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+DATA_DIR = Path("/tmp/data") if is_serverless else BASE_DIR / "data"
+
 INCOMING_DIR = DATA_DIR / "incoming"
 PROCESSED_DIR = DATA_DIR / "processed"
 ARCHIVE_DIR = DATA_DIR / "archive"
 SAMPLES_DIR = DATA_DIR / "samples"
 DB_PATH = DATA_DIR / "securelink.db"
 
-# Ensure directories exist
+# Ensure directories exist safely without failing on restricted filesystems
 for directory in [DATA_DIR, INCOMING_DIR, PROCESSED_DIR, ARCHIVE_DIR, SAMPLES_DIR]:
-    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 class Settings(BaseModel):
     APP_NAME: str = "SecureLink - Tactical Datalink System"
@@ -46,7 +53,7 @@ class Settings(BaseModel):
     SYNC_DATABASE_URL: str = f"sqlite:///{DB_PATH.as_posix()}"
     
     # Demonstration Mode
-    DEMO_DEFAULT_ENABLED: bool = False
+    DEMO_DEFAULT_ENABLED: bool = True
     DEMO_DEFAULT_RATE_HZ: float = 1.0
     DEMO_DEFAULT_ATTACK_RATIO: float = 0.25
 

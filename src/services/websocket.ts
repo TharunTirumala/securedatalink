@@ -21,7 +21,7 @@ class WebSocketClient {
   private pingInterval: any = null;
   private simulationInterval: any = null;
   private failCount: number = 0;
-  private isPaused: boolean = false;
+  private isPaused: boolean = typeof window !== 'undefined' && localStorage.getItem('securelink_stream_paused') === 'true';
   public isConnected: boolean = false;
 
   constructor() {
@@ -30,6 +30,11 @@ class WebSocketClient {
 
   public setPaused(paused: boolean) {
     this.isPaused = paused;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('securelink_stream_paused', paused ? 'true' : 'false');
+      } catch (e) {}
+    }
   }
 
   public connect() {

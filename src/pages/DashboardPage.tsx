@@ -38,7 +38,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   // Simulator configuration state
   const [simConfig, setSimConfig] = useState<SimulatorConfig>({
-    enabled: false,
+    enabled: true,
     rate_hz: 1.0,
     attack_ratio: 0.25,
     sources: ["UAV-ALPHA-01", "UAV-BRAVO-02", "UGV-SIERRA-03", "BASE-RELAY-04"]
@@ -100,7 +100,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   };
 
-  const isStreamPaused = stats?.stream_status === 'PAUSED';
+  const isStreamPaused = stats?.stream_status
+    ? stats.stream_status === 'PAUSED'
+    : (typeof window !== 'undefined' && localStorage.getItem('securelink_stream_paused') === 'true');
   const isTelemetryReceiving = !isStreamPaused && (simConfig.enabled || packets.length > 0);
   const totalProcessed = stats?.adaptive_filter?.evaluated ?? (stats ? stats.authenticated_packets + stats.replay_filtered : packets.length);
   const trustScore = stats ? stats.trust_score : (packets[0]?.trust_score ?? 100);

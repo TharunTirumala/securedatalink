@@ -42,7 +42,12 @@ export const App: React.FC = () => {
         api.getActiveKey().catch(() => null),
       ]);
 
-      if (statsData) setStats(statsData);
+      if (statsData) {
+        setStats(statsData);
+        if (statsData.stream_status) {
+          wsClient.setPaused(statsData.stream_status === 'PAUSED');
+        }
+      }
       if (pipelineData) setPipelineStages(pipelineData.stages);
       if (packetsData) setPackets(packetsData);
       if (threatsData) setThreats(threatsData);

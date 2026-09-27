@@ -1,6 +1,7 @@
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -9,32 +10,47 @@ from app.core.logging import logger
 from app.database.connection import init_db
 from app.api.router import api_router
 from app.api.websocket import router as ws_router
+from app.api.endpoints_dashboard import router as dashboard_router
+from app.api.endpoints_telemetry import router as telemetry_router
+from app.api.endpoints_threats import router as threats_router
+from app.api.endpoints_keys import router as keys_router
+from app.api.endpoints_operator import router as operator_router
+from app.api.endpoints_archive import router as archive_router
 from app.ingestion.file_watcher import file_watcher
 from app.ingestion.simulator import simulator
 from app.ingestion.udp_receiver import udp_receiver
 from app.processing.pipeline import pipeline
 from app.processing.freshness import freshness_verifier
 
+_initialized = False
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    global _initialized
     logger.info("Initializing SecureLink Cyber-Secure Tactical Datalink System...")
-    await init_db()
-    await pipeline.initialize_state()
-    await freshness_verifier.initialize_state()
-    await file_watcher.start()
-    await simulator.start()
-    await udp_receiver.start()
-    logger.info("SecureLink backend services started successfully.")
+    if not _initialized:
+        await init_db()
+        await pipeline.initialize_state()
+        await freshness_verifier.initialize_state()
+        _initialized = True
+
+    is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+    if not is_serverless:
+        await file_watcher.start()
+        await simulator.start()
+        await udp_receiver.start()
+        logger.info("SecureLink backend services started successfully.")
+    else:
+        logger.info("SecureLink running in serverless environment.")
     
     yield
     
-    # Shutdown
-    logger.info("Shutting down SecureLink backend services...")
-    await simulator.stop()
-    await file_watcher.stop()
-    await udp_receiver.stop()
-    logger.info("SecureLink shutdown complete.")
+    if not is_serverless:
+        logger.info("Shutting down SecureLink backend services...")
+        await simulator.stop()
+        await file_watcher.stop()
+        await udp_receiver.stop()
+        logger.info("SecureLink shutdown complete.")
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -42,6 +58,21 @@ app = FastAPI(
     description="Cyber-Secure Tactical Datalink System - Real-Time Telemetry Authentication & Threat Filtering",
     lifespan=lifespan
 )
+
+# Lazy DB & pipeline initialization middleware for serverless cold starts
+@app.middleware("http")
+async def ensure_db_initialized(request, call_next):
+    global _initialized
+    if not _initialized:
+        try:
+            await init_db()
+            await pipeline.initialize_state()
+            await freshness_verifier.initialize_state()
+            _initialized = True
+        except Exception as e:
+            logger.error(f"Error during lazy initialization: {e}")
+    response = await call_next(request)
+    return response
 
 # CORS configuration for frontend development
 app.add_middleware(
@@ -52,14 +83,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
+# Include API routes with both /api/v1 and /v1 prefixes for Vercel serverless compatibility
 app.include_router(api_router)
 app.include_router(ws_router)
 
+v1_router = APIRouter(prefix="/v1")
+v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
+v1_router.include_router(telemetry_router, prefix="/telemetry", tags=["Telemetry"])
+v1_router.include_router(threats_router, prefix="/threats", tags=["Threats"])
+v1_router.include_router(keys_router, prefix="/keys", tags=["Key Management"])
+v1_router.include_router(operator_router, prefix="/operator", tags=["Operator Controls"])
+v1_router.include_router(archive_router, prefix="/archive", tags=["Archive & Logs"])
+app.include_router(v1_router)
+
 @app.get("/health")
+@app.get("/api/health")
 async def health_check():
     return {"status": "HEALTHY", "telemetry": "CONNECTED"}
 
+@app.get("/system/info")
 @app.get("/api/system/info")
 async def system_info():
     return {
