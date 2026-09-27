@@ -416,6 +416,7 @@ async def import_telemetry_batch(
                 "source": res.get("source"),
                 "classification": res.get("classification"),
                 "action": action,
+                "reason": res.get("reason"),
                 "trust_score": res.get("trust_score"),
                 "auth_status": res.get("auth_status"),
                 "freshness_status": res.get("freshness_status"),

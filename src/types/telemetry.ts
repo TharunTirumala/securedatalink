@@ -52,6 +52,7 @@ export interface Packet {
   trust_score: number;
   trust_details?: TrustDetails;
   action: 'ACCEPTED' | 'BLOCKED' | 'REJECTED' | 'FILTERED';
+  reason?: string;
   latency_ms: number;
   decrypted_payload?: TelemetryData;
   simulated: boolean;

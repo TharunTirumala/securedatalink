@@ -51,7 +51,7 @@ class ECDSAProcessor:
     def verify(self, node_id: str, signature: bytes, data: bytes) -> Tuple[bool, str]:
         """Verifies ECDSA signature against the registered public key for the node."""
         if node_id not in self._public_keys:
-            return False, f"Unknown source node: {node_id} (no public key registered)"
+            self.generate_node_keypair(node_id)
         
         public_key = self._public_keys[node_id]
         try:

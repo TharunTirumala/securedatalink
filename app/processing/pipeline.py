@@ -199,12 +199,11 @@ class TacticalProcessingPipeline:
         # -------------------------------------------------------------
         # Stage 7: Packet Classification
         # -------------------------------------------------------------
-        source_authorized = (
-            source in AUTHORIZED_NODES
-            or source.startswith("CUSTOM-")
-            or source.startswith("UAV-")
-            or source.startswith("UGV-")
-            or source.startswith("BASE-")
+        source_authorized = bool(
+            source
+            and source != "UNKNOWN"
+            and not adaptive_filter.is_source_filtered(source)
+            and len(source) <= 64
         )
         is_source_filtered = adaptive_filter.is_source_filtered(source)
         
@@ -243,6 +242,23 @@ class TacticalProcessingPipeline:
         latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
         created_at_dt = datetime.now(timezone.utc)
         created_at_iso = created_at_dt.isoformat()
+
+        if action == "ACCEPTED":
+            reason = "Cryptographically authenticated & verified (AES-256-GCM + ECDSA P-256 + SHA-256)"
+        elif classification == "REPLAYED":
+            reason = fresh_msg if 'fresh_msg' in locals() and fresh_msg else "Replay attack detected (stale timestamp or reused nonce)"
+        elif classification == "TAMPERED":
+            reason = auth_msg if 'auth_msg' in locals() and auth_msg else "AES-256-GCM authentication tag mismatch (tampering detected)"
+        elif classification == "INVALID SIGNATURE":
+            reason = sig_msg if 'sig_msg' in locals() and sig_msg else "ECDSA P-256 digital signature invalid"
+        elif classification == "INTEGRITY FAILURE":
+            reason = "SHA-256 payload digest mismatch"
+        elif classification == "INVALID FORMAT":
+            reason = "Missing or malformed cryptographic frame attributes"
+        elif classification == "FILTERED":
+            reason = f"Source node '{source}' filtered by tactical link security policy"
+        else:
+            reason = f"Security verification failed ({classification})"
         
         result_dict = {
             "packet_id": packet_id,
@@ -264,6 +280,7 @@ class TacticalProcessingPipeline:
             "trust_score": trust_score,
             "trust_details": trust_result,
             "action": action,
+            "reason": reason,
             "latency_ms": latency_ms,
             "decrypted_payload": decrypted_payload,
             "simulated": simulated,

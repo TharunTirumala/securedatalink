@@ -317,7 +317,7 @@ export const ImportTelemetryModal: React.FC<ImportTelemetryModalProps> = ({
                         <th className="py-2 px-3">#</th>
                         <th className="py-2 px-3">Packet ID</th>
                         <th className="py-2 px-3">Device / Node</th>
-                        <th className="py-2 px-3">Classification</th>
+                        <th className="py-2 px-3">Classification & Reason</th>
                         <th className="py-2 px-3">Outcome</th>
                         <th className="py-2 px-3 text-right">Trust Score</th>
                       </tr>
@@ -328,15 +328,22 @@ export const ImportTelemetryModal: React.FC<ImportTelemetryModalProps> = ({
                           <td className="py-2 px-3 text-slate-400 font-mono">{res.record_index || idx + 1}</td>
                           <td className="py-2 px-3 font-mono font-bold text-sky-800">{res.packet_id || '—'}</td>
                           <td className="py-2 px-3 font-semibold text-slate-700">{res.source || '—'}</td>
-                          <td className="py-2 px-3 font-mono text-[11px]">
+                          <td className="py-2 px-3">
                             {res.classification ? (
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                res.classification === 'AUTHENTIC'
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  : 'bg-rose-50 text-rose-700 border border-rose-200'
-                              }`}>
-                                {res.classification}
-                              </span>
+                              <div>
+                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  res.classification === 'AUTHENTIC'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}>
+                                  {res.classification}
+                                </span>
+                                {res.reason && (
+                                  <div className="text-[10px] text-slate-500 mt-0.5 truncate max-w-xs" title={res.reason}>
+                                    {res.reason}
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-rose-600 font-medium">{res.error || 'Failed'}</span>
                             )}

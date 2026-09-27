@@ -22,16 +22,55 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
 
   const activePacket = packets[selectedIdx] || packets[0];
 
+  const totalEvaluated = packets.length;
+  const acceptedCount = packets.filter(p => p.action === 'ACCEPTED').length;
+  const blockedCount = packets.filter(p => p.action === 'BLOCKED' || p.action === 'REJECTED' || p.action === 'FILTERED').length;
+  const avgTrust = totalEvaluated > 0
+    ? Math.round(packets.reduce((acc, p) => acc + (p.trust_score || 0), 0) / totalEvaluated)
+    : 100;
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Page Header */}
-      <div className="pb-4 border-b border-slate-200">
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-          Packet Verification & Cryptographic Deep Dive
-        </h1>
-        <p className="text-xs text-slate-500 font-medium">
-          Step-by-step cryptographic verification: Nonce freshness, AES-256-GCM, ECDSA P-256, and SHA-256 digest
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-200 gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+            Packet Verification & Cryptographic Deep Dive
+          </h1>
+          <p className="text-xs text-slate-500 font-medium">
+            Step-by-step cryptographic verification: Nonce freshness, AES-256-GCM, ECDSA P-256, and SHA-256 digest
+          </p>
+        </div>
+      </div>
+
+      {/* 4 Summary Verification Metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+        <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs">
+          <span className="text-[10px] font-bold text-slate-400 uppercase font-mono block">EVALUATED</span>
+          <span className="text-lg font-bold font-mono text-slate-900 leading-tight mt-1 block">
+            {totalEvaluated} PACKETS
+          </span>
+        </div>
+        <div className="bg-white border border-emerald-200 rounded-lg p-3.5 shadow-xs bg-emerald-50/40">
+          <span className="text-[10px] font-bold text-emerald-700 uppercase font-mono block">VERIFIED / ACCEPTED</span>
+          <span className="text-lg font-bold font-mono text-emerald-700 leading-tight mt-1 block">
+            {acceptedCount}
+          </span>
+        </div>
+        <div className="bg-white border border-rose-200 rounded-lg p-3.5 shadow-xs bg-rose-50/40">
+          <span className="text-[10px] font-bold text-rose-700 uppercase font-mono block">THREATS BLOCKED</span>
+          <span className="text-lg font-bold font-mono text-rose-700 leading-tight mt-1 block">
+            {blockedCount}
+          </span>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-lg p-3.5 shadow-xs">
+          <span className="text-[10px] font-bold text-slate-400 uppercase font-mono block">AVG TRUST SCORE</span>
+          <span className={`text-lg font-bold font-mono leading-tight mt-1 block ${
+            avgTrust >= 75 ? 'text-emerald-700' : avgTrust >= 50 ? 'text-amber-700' : 'text-rose-700'
+          }`}>
+            {avgTrust}/100
+          </span>
+        </div>
       </div>
 
       {packets.length === 0 ? (
@@ -46,7 +85,7 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
               Select Packet to Inspect ({packets.length})
             </h3>
             <div className="divide-y divide-slate-100 overflow-y-auto flex-1">
-              {packets.slice(0, 30).map((pkt, idx) => (
+              {packets.slice(0, 50).map((pkt, idx) => (
                 <button
                   key={pkt.packet_id + idx}
                   onClick={() => setSelectedIdx(idx)}
@@ -87,6 +126,23 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
                 <Badge label={activePacket.action} type="action" />
               </div>
             </div>
+
+            {/* Verification Reason Banner */}
+            {activePacket.reason && (
+              <div className={`p-3 rounded-lg border text-xs flex items-start space-x-2.5 ${
+                activePacket.action === 'ACCEPTED'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}>
+                <ShieldCheck className={`w-4 h-4 shrink-0 mt-0.5 ${
+                  activePacket.action === 'ACCEPTED' ? 'text-emerald-600' : 'text-rose-600'
+                }`} />
+                <div>
+                  <span className="font-bold">Evaluation Decision: </span>
+                  <span>{activePacket.reason}</span>
+                </div>
+              </div>
+            )}
 
             {/* Stage-by-stage verification panels */}
             <div className="space-y-4">
