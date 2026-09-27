@@ -112,10 +112,12 @@ class FileWatcher:
                 return
 
             # Process each record through the security pipeline
+            from app.api.endpoints_telemetry import normalize_and_seal_telemetry
             processed_count = 0
-            for record in records:
+            for idx, record in enumerate(records):
                 try:
-                    await pipeline.process_packet(record)
+                    sealed_rec = normalize_and_seal_telemetry(record, sequence_offset=idx)
+                    await pipeline.process_packet(sealed_rec)
                     processed_count += 1
                 except Exception as ex:
                     logger.error(f"Error processing packet record from {filename}: {ex}")

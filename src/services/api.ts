@@ -93,6 +93,46 @@ export const api = {
     return await res.json();
   },
 
+  async importTelemetryFile(file: File, operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(`${API_BASE}/telemetry/import?operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      let errMsg = `File import failed (HTTP ${res.status})`;
+      try {
+        const errJson = await res.json();
+        if (errJson && errJson.detail) {
+          errMsg = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+        }
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+    return await res.json();
+  },
+
+  async importTelemetryData(data: any, operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
+    const res = await fetch(`${API_BASE}/telemetry/import?operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      let errMsg = `Data import failed (HTTP ${res.status})`;
+      try {
+        const errJson = await res.json();
+        if (errJson && errJson.detail) {
+          errMsg = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+        }
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+    return await res.json();
+  },
+
   async getC2Stream(): Promise<any> {
     try {
       const res = await fetch(`${API_BASE}/telemetry/c2-stream`);

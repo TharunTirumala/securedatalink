@@ -15,6 +15,7 @@ from app.database.models import SecurityLogRecord, FileProcessingRecord, PacketR
 from app.services.audit_service import audit_service
 from app.services.ws_manager import ws_manager
 from app.processing.pipeline import pipeline
+from app.api.endpoints_telemetry import normalize_and_seal_telemetry
 
 router = APIRouter()
 
@@ -182,12 +183,14 @@ async def upload_telemetry_file(
         raise HTTPException(status_code=400, detail="File contained no valid telemetry packet records.")
 
     # 3. Process records through security pipeline
+    from app.api.endpoints_telemetry import normalize_and_seal_telemetry
     processed_count = 0
     accepted_count = 0
     blocked_count = 0
-    for record in records:
+    for idx, record in enumerate(records):
         try:
-            res = await pipeline.process_packet(record)
+            sealed_record = normalize_and_seal_telemetry(record, sequence_offset=idx)
+            res = await pipeline.process_packet(sealed_record)
             processed_count += 1
             if res.get("action") == "ACCEPTED":
                 accepted_count += 1
@@ -313,8 +316,9 @@ async def ingest_sample_file(
     processed_count = 0
     accepted_count = 0
     blocked_count = 0
-    for r in records:
-        res = await pipeline.process_packet(r)
+    for idx, r in enumerate(records):
+        sealed_r = normalize_and_seal_telemetry(r, sequence_offset=idx)
+        res = await pipeline.process_packet(sealed_r)
         processed_count += 1
         if res.get("action") == "ACCEPTED":
             accepted_count += 1

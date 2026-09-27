@@ -424,4 +424,91 @@ async def test_demo_state_machine_and_audit_transitions():
         assert any("STREAM_RESUMED" in d or "RESUMED" in d for d in descriptions)
         assert any("DEMO_STOPPED" in d or "STOPPED" in d for d in descriptions)
 
+@pytest.mark.asyncio
+async def test_import_telemetry_json_and_csv_batches():
+    """
+    Verifies the Import JSON / CSV pipeline:
+    1. Single JSON record import
+    2. Array JSON records import with ISO-8601 timestamps
+    3. CSV file upload with header validation
+    4. Rejection of malformed rows while processing valid ones
+    """
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # 1. Single JSON record import via direct JSON body
+        single_json = {
+            "device_id": "UAV-IMPORT-01",
+            "latitude": 17.385044,
+            "longitude": 78.486671,
+            "altitude": 450.0,
+            "speed": 65.0,
+            "heading": 120.0,
+            "timestamp": "2026-09-27T18:00:00Z",
+            "battery_pct": 92.0,
+            "flight_mode": "AUTONOMOUS_NAV"
+        }
+        res_single = await ac.post("/api/v1/telemetry/import", json=single_json)
+        assert res_single.status_code == 200
+        single_data = res_single.json()
+        assert single_data["status"] == "COMPLETED"
+        assert single_data["total_records"] == 1
+        assert single_data["accepted_count"] == 1
+        assert single_data["failed_count"] == 0
+
+        # 2. JSON Array of records
+        json_array = [
+            {
+                "device_id": "UAV-IMP-02",
+                "latitude": 17.3860,
+                "longitude": 78.4870,
+                "altitude": 500.0,
+                "speed": 70.0,
+                "heading": 180.0,
+                "timestamp": "2026-09-27T18:05:00Z"
+            },
+            {
+                "device_id": "UGV-IMP-03",
+                "latitude": 17.3870,
+                "longitude": 78.4880,
+                "altitude": 100.0,
+                "speed": 20.0,
+                "heading": 45.0,
+                "timestamp": "2026-09-27T18:05:10Z"
+            }
+        ]
+        res_array = await ac.post("/api/v1/telemetry/import", json=json_array)
+        assert res_array.status_code == 200
+        array_data = res_array.json()
+        assert array_data["total_records"] == 2
+        assert array_data["accepted_count"] == 2
+        assert array_data["failed_count"] == 0
+
+        # 3. CSV File Upload
+        csv_content = (
+            "device_id,latitude,longitude,altitude,speed,heading,timestamp,battery_pct,flight_mode\n"
+            "UAV-CSV-01,17.3850,78.4867,500.0,80.0,90.0,2026-09-27T18:00:00Z,95.0,AUTONOMOUS_NAV\n"
+            "UAV-CSV-02,17.3860,78.4870,550.0,75.0,120.0,2026-09-27T18:00:05Z,91.0,WAYPOINT_PATROL\n"
+        ).encode('utf-8')
+        files = {"file": ("tactical_feed.csv", csv_content, "text/csv")}
+        res_csv = await ac.post("/api/v1/telemetry/import", files=files)
+        assert res_csv.status_code == 200
+        csv_data = res_csv.json()
+        assert csv_data["status"] == "COMPLETED"
+        assert csv_data["total_records"] == 2
+        assert csv_data["accepted_count"] == 2
+        assert csv_data["failed_count"] == 0
+
+        # 4. Mixed CSV with one malformed row (should safely flag failed and process valid)
+        mixed_csv = (
+            "device_id,latitude,longitude,altitude,speed,heading,timestamp\n"
+            "UAV-OK-01,17.3850,78.4867,500.0,80.0,90.0,2026-09-27T18:00:00Z\n"
+            "UAV-BAD-02,999.0,78.4870,550.0,75.0,120.0,2026-09-27T18:00:05Z\n" # Invalid lat > 90
+        ).encode('utf-8')
+        files_mixed = {"file": ("mixed_feed.csv", mixed_csv, "text/csv")}
+        res_mixed = await ac.post("/api/v1/telemetry/import", files=files_mixed)
+        assert res_mixed.status_code == 200
+        mixed_data = res_mixed.json()
+        assert mixed_data["total_records"] == 2
+        assert mixed_data["accepted_count"] == 1
+        assert mixed_data["failed_count"] == 1
+
 

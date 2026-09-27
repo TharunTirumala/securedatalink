@@ -14,8 +14,8 @@ import { RealTimeTelemetryFeed } from '../components/dashboard/RealTimeTelemetry
 import { SecurityAlertsPanel } from '../components/dashboard/SecurityAlertsPanel';
 import { TrustedC2Panel } from '../components/dashboard/TrustedC2Panel';
 import { SimplePacketDetailModal } from '../components/dashboard/SimplePacketDetailModal';
-import { CustomTelemetryModal } from '../components/dashboard/CustomTelemetryModal';
-import { Play, Pause, Send, Square } from 'lucide-react';
+import { ImportTelemetryModal } from '../components/dashboard/ImportTelemetryModal';
+import { Play, Pause, Upload, Square } from 'lucide-react';
 
 interface DashboardPageProps {
   stats: DashboardStats | null;
@@ -36,7 +36,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onNavigate
 }) => {
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null);
-  const [isCustomTelemetryOpen, setIsCustomTelemetryOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const [demoState, setDemoState] = useState<'STOPPED' | 'RUNNING' | 'PAUSED'>(() => {
     if (stats?.demo_state) return stats.demo_state;
@@ -245,14 +245,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </>
           )}
 
-          {/* Send Custom Telemetry Button */}
+          {/* IMPORT JSON / CSV Button */}
           <button
-            onClick={() => setIsCustomTelemetryOpen(true)}
+            onClick={() => setIsImportModalOpen(true)}
             className="px-3.5 py-1.5 rounded text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
-            title="Inject custom tactical telemetry packet"
+            title="Import telemetry batch from JSON, CSV, or JSONL file"
           >
-            <Send className="w-3.5 h-3.5" />
-            <span>SEND CUSTOM TELEMETRY</span>
+            <Upload className="w-3.5 h-3.5" />
+            <span>IMPORT JSON / CSV</span>
           </button>
         </div>
       </div>
@@ -369,11 +369,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         onNavigateToVerification={() => onNavigate?.('verification')}
       />
 
-      {/* CUSTOM TELEMETRY MODAL */}
-      <CustomTelemetryModal
-        isOpen={isCustomTelemetryOpen}
-        onClose={() => setIsCustomTelemetryOpen(false)}
-        onTelemetrySubmitted={() => onRefreshData()}
+      {/* IMPORT TELEMETRY MODAL */}
+      <ImportTelemetryModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onTelemetryImported={() => onRefreshData()}
       />
     </div>
   );
