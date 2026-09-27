@@ -58,6 +58,7 @@ async def start_demo(operator_id: str = "OPERATOR-PRIMARY"):
     simulator.reset_run()
     simulator.set_config(enabled=True)
     await pipeline.resume_stream()
+    await simulator.start()
     await set_system_state("demo_state", "RUNNING")
     await audit_service.log_stream_state(
         operator_id=operator_id,
@@ -189,8 +190,8 @@ async def resume_stream(operator_id: str = "OPERATOR-PRIMARY"):
         }
 
     await pipeline.resume_stream()
-    if not simulator.enabled:
-        simulator.set_config(enabled=True)
+    simulator.set_config(enabled=True)
+    await simulator.start()
     await set_system_state("demo_state", "RUNNING")
     await audit_service.log_stream_state(
         operator_id=operator_id,
