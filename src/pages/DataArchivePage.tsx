@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ProcessedFile, Packet } from '../types/telemetry';
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
@@ -18,7 +18,9 @@ import {
   Database,
   Inbox,
   Clock,
-  Layers
+  Layers,
+  Search,
+  Upload
 } from 'lucide-react';
 
 export const DataArchivePage: React.FC = () => {
@@ -38,6 +40,14 @@ export const DataArchivePage: React.FC = () => {
   const [actionInProgress, setActionInProgress] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Search Filters
+  const [vaultSearch, setVaultSearch] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
+  const [fileSearch, setFileSearch] = useState('');
+
+  // File Upload Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Modals
   const [isArchiveAllModalOpen, setIsArchiveAllModalOpen] = useState(false);
@@ -84,10 +94,14 @@ export const DataArchivePage: React.FC = () => {
     const unsubRestored = wsClient.on('data_restored', () => {
       fetchData();
     });
+    const unsubProcessed = wsClient.on('file_processed', () => {
+      fetchData();
+    });
 
     return () => {
       unsubArchived();
       unsubRestored();
+      unsubProcessed();
     };
   }, [fetchData]);
 
@@ -143,6 +157,61 @@ export const DataArchivePage: React.FC = () => {
       setActionInProgress(false);
     }
   };
+
+  // Handle File Upload Ingestion
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setActionInProgress(true);
+    setErrorMsg('');
+    setStatusMsg('');
+    try {
+      const res = await api.uploadTelemetryFile(file, 'OPERATOR-PRIMARY');
+      setStatusMsg(res.message || `File ${res.filename} processed: ${res.record_count} frames ingested.`);
+      await fetchData();
+    } catch (err: any) {
+      setErrorMsg(err.message || 'File upload and processing failed.');
+    } finally {
+      setActionInProgress(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Handle Ingest Sample File
+  const handleIngestSample = async (type: 'authentic' | 'tampered') => {
+    setActionInProgress(true);
+    setErrorMsg('');
+    setStatusMsg('');
+    try {
+      const res = await api.ingestSampleFile(type, 'OPERATOR-PRIMARY');
+      setStatusMsg(res.message || `Sample file (${type}) processed: ${res.record_count} frames ingested.`);
+      await fetchData();
+    } catch (err: any) {
+      setErrorMsg(err.message || `Sample file (${type}) ingestion failed.`);
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+
+  // Filtered Lists
+  const filteredArchived = archivedPackets.filter((p) => {
+    if (!vaultSearch.trim()) return true;
+    const q = vaultSearch.toLowerCase();
+    return p.packet_id.toLowerCase().includes(q) || p.source.toLowerCase().includes(q) || p.classification.toLowerCase().includes(q);
+  });
+
+  const filteredActive = activePackets.filter((p) => {
+    if (!activeSearch.trim()) return true;
+    const q = activeSearch.toLowerCase();
+    return p.packet_id.toLowerCase().includes(q) || p.source.toLowerCase().includes(q) || p.classification.toLowerCase().includes(q);
+  });
+
+  const filteredFiles = files.filter((f) => {
+    if (!fileSearch.trim()) return true;
+    const q = fileSearch.toLowerCase();
+    return f.filename.toLowerCase().includes(q) || f.file_type.toLowerCase().includes(q) || f.status.toLowerCase().includes(q);
+  });
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -312,12 +381,22 @@ export const DataArchivePage: React.FC = () => {
       {/* Tab 1: Archived Vault */}
       {activeTab === 'vault' && (
         <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-          <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
+          <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
             <span className="text-slate-600 font-semibold flex items-center space-x-1.5">
               <Database className="w-3.5 h-3.5 text-amber-600" />
-              <span>Immutable Cold Storage Vault ({archivedPackets.length} Loaded)</span>
+              <span>Immutable Cold Storage Vault ({filteredArchived.length} of {archivedPackets.length} Loaded)</span>
             </span>
-            <span className="text-[11px] text-slate-400">Archived data is excluded from active stream counters</span>
+
+            <div className="relative w-full sm:w-72">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+              <input
+                type="text"
+                placeholder="Filter by Packet ID or Source..."
+                value={vaultSearch}
+                onChange={(e) => setVaultSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -334,19 +413,21 @@ export const DataArchivePage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-150">
-                {archivedPackets.length === 0 ? (
+                {filteredArchived.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-10 text-center text-slate-400">
-                      No archived packets in vault yet. Switch to the "Active Telemetry Buffer" tab and click "Archive" on packets to transfer them here.
+                      {archivedPackets.length === 0
+                        ? 'No archived packets in vault yet. Switch to the "Active Telemetry Buffer" tab and click "Archive" on packets to transfer them here.'
+                        : 'No packets match your search filter.'}
                     </td>
                   </tr>
                 ) : (
-                  archivedPackets.map((pkt) => (
+                  filteredArchived.map((pkt) => (
                     <tr key={pkt.packet_id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-2.5 px-3 font-mono font-bold text-sky-800">
                         <button
                           onClick={() => setSelectedPacket(pkt)}
-                          className="hover:underline text-left"
+                          className="hover:underline text-left cursor-pointer"
                         >
                           {pkt.packet_id}
                         </button>
@@ -367,7 +448,7 @@ export const DataArchivePage: React.FC = () => {
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
                         <button
                           onClick={() => setRestorePacketTarget(pkt)}
-                          className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] border border-slate-300 flex items-center space-x-1 ml-auto"
+                          className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] border border-slate-300 flex items-center space-x-1 ml-auto cursor-pointer"
                           title="Restore packet back to active telemetry buffer"
                         >
                           <RotateCcw className="w-3 h-3 text-sky-600" />
@@ -386,19 +467,33 @@ export const DataArchivePage: React.FC = () => {
       {/* Tab 2: Active Buffer */}
       {activeTab === 'active' && (
         <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-          <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
+          <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
             <span className="text-slate-600 font-semibold flex items-center space-x-1.5">
               <Inbox className="w-3.5 h-3.5 text-sky-600" />
-              <span>Active Telemetry Buffer ({activePackets.length} Records)</span>
+              <span>Active Telemetry Buffer ({filteredActive.length} of {activePackets.length} Records)</span>
             </span>
-            <button
-              onClick={() => setIsArchiveAllModalOpen(true)}
-              disabled={activePackets.length === 0}
-              className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors flex items-center space-x-1"
-            >
-              <Archive className="w-3 h-3" />
-              <span>Archive Entire Buffer</span>
-            </button>
+
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                <input
+                  type="text"
+                  placeholder="Filter active buffer..."
+                  value={activeSearch}
+                  onChange={(e) => setActiveSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+
+              <button
+                onClick={() => setIsArchiveAllModalOpen(true)}
+                disabled={activePackets.length === 0}
+                className="px-3 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors flex items-center space-x-1 cursor-pointer whitespace-nowrap"
+              >
+                <Archive className="w-3 h-3" />
+                <span>Archive Entire Buffer</span>
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -415,19 +510,21 @@ export const DataArchivePage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-150">
-                {activePackets.length === 0 ? (
+                {filteredActive.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-10 text-center text-slate-400">
-                      Active buffer is empty. Telemetry packets will appear here as they are ingested from UDP or simulation.
+                      {activePackets.length === 0
+                        ? 'Active buffer is empty. Telemetry packets will appear here as they are ingested from UDP or simulation.'
+                        : 'No packets match your search filter.'}
                     </td>
                   </tr>
                 ) : (
-                  activePackets.map((pkt) => (
+                  filteredActive.map((pkt) => (
                     <tr key={pkt.packet_id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-2.5 px-3 font-mono font-bold text-sky-800">
                         <button
                           onClick={() => setSelectedPacket(pkt)}
-                          className="hover:underline text-left"
+                          className="hover:underline text-left cursor-pointer"
                         >
                           {pkt.packet_id}
                         </button>
@@ -446,7 +543,7 @@ export const DataArchivePage: React.FC = () => {
                       <td className="py-2.5 px-3 text-right">
                         <button
                           onClick={() => setArchiveSingleTarget(pkt)}
-                          className="px-2.5 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-[11px] border border-amber-200 flex items-center space-x-1 ml-auto"
+                          className="px-2.5 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-[11px] border border-amber-200 flex items-center space-x-1 ml-auto cursor-pointer"
                           title="Archive this packet to cold vault"
                         >
                           <Archive className="w-3 h-3 text-amber-600" />
@@ -465,6 +562,78 @@ export const DataArchivePage: React.FC = () => {
       {/* Tab 3: File Ingestion History */}
       {activeTab === 'files' && (
         <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+          {/* File Ingestion Action Bar */}
+          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
+                <FolderCheck className="w-4 h-4 text-emerald-600" />
+                <span>Tactical Telemetry File Ingestion</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Upload raw telemetry batches (.json, .jsonl, .csv) with SHA-256 deduplication and 10-stage pipeline execution
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".json,.jsonl,.csv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={actionInProgress}
+                className="px-3 py-1.5 rounded bg-sky-700 hover:bg-sky-800 text-white font-semibold text-xs flex items-center space-x-1.5 shadow-xs transition-colors cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5 text-sky-200" />
+                <span>{actionInProgress ? 'Processing...' : 'Upload File (.json, .csv)'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleIngestSample('authentic')}
+                disabled={actionInProgress}
+                className="px-2.5 py-1.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold text-xs flex items-center space-x-1 transition-colors cursor-pointer"
+                title="Ingest authentic sample telemetry batch"
+              >
+                <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Sample (Authentic)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleIngestSample('tampered')}
+                disabled={actionInProgress}
+                className="px-2.5 py-1.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 font-semibold text-xs flex items-center space-x-1 transition-colors cursor-pointer"
+                title="Ingest tampered sample telemetry batch"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                <span>Sample (Tampered)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Search Toolbar for Files */}
+          <div className="p-3 bg-white border-b border-slate-200 flex items-center justify-between text-xs">
+            <span className="text-slate-500 font-mono text-[11px]">
+              {filteredFiles.length} of {files.length} Files Logged
+            </span>
+            <div className="relative w-64">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+              <input
+                type="text"
+                placeholder="Filter files by name or status..."
+                value={fileSearch}
+                onChange={(e) => setFileSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1 bg-white border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider text-[10px] font-bold border-b border-slate-200">
@@ -478,14 +647,16 @@ export const DataArchivePage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-150">
-                {files.length === 0 ? (
+                {filteredFiles.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-400">
-                      No files ingested yet. Add a JSON, JSONL, or CSV file to <code>/data/incoming</code> to see automatic detection and processing.
+                    <td colSpan={6} className="py-10 text-center text-slate-400">
+                      {files.length === 0
+                        ? 'No files ingested yet. Click "Upload File" or "Sample (Authentic)" above to process telemetry batches.'
+                        : 'No files match your search filter.'}
                     </td>
                   </tr>
                 ) : (
-                  files.map((f) => (
+                  filteredFiles.map((f) => (
                     <tr key={f.id} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 font-semibold text-slate-800 flex items-center space-x-2">
                         <FileCheck className="w-4 h-4 text-emerald-600" />
@@ -494,7 +665,7 @@ export const DataArchivePage: React.FC = () => {
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-600">
                         {f.file_type}
                       </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-500 text-[11px]">
+                      <td className="py-2.5 px-3 font-mono text-slate-500 text-[11px]" title={f.file_hash}>
                         {f.file_hash.slice(0, 16)}...
                       </td>
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-800">
@@ -510,7 +681,7 @@ export const DataArchivePage: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-2.5 px-3 font-mono text-slate-500">
-                        {f.processed_at ? new Date(f.processed_at).toLocaleString() : ''}
+                        {f.processed_at ? new Date(f.processed_at).toISOString().replace('T', ' ').slice(0, 19) : ''}
                       </td>
                     </tr>
                   ))

@@ -118,42 +118,42 @@ export const api = {
   },
 
   async resyncKey(operatorId: string = 'OPERATOR-PRIMARY'): Promise<KeyMetadata> {
-    try {
-      const res = await fetch(`${API_BASE}/keys/resync?operator_id=${encodeURIComponent(operatorId)}`, {
-        method: 'POST'
-      });
-      if (res.ok) return await res.json();
-    } catch (e) {}
-    return { ...INITIAL_KEY, key_id: 'KEY-TACTICAL-' + Date.now().toString().slice(-4) };
+    const res = await fetch(`${API_BASE}/keys/resync?operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      throw new Error(`Key resynchronization failed (HTTP ${res.status})`);
+    }
+    return await res.json();
   },
 
   // Operator Controls
-  async getOperatorStatus(): Promise<{ freshness_window: number; stream_status: string; authorized_operators: string[] }> {
+  async getOperatorStatus(): Promise<{ freshness_window: number; stream_status: string; authorized_operators: string[]; cache_entries?: number }> {
     try {
       const res = await fetch(`${API_BASE}/operator/status`);
       if (res.ok) return await res.json();
     } catch (e) {}
-    return { freshness_window: 5.0, stream_status: 'ACTIVE', authorized_operators: ['OPERATOR-PRIMARY'] };
+    return { freshness_window: 5.0, stream_status: 'ACTIVE', authorized_operators: ['OPERATOR-PRIMARY'], cache_entries: 0 };
   },
 
   async pauseStream(operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE}/operator/pause?operator_id=${encodeURIComponent(operatorId)}`, {
-        method: 'POST'
-      });
-      if (res.ok) return await res.json();
-    } catch (e) {}
-    return { status: 'PAUSED', stream_status: 'PAUSED', operator_id: operatorId };
+    const res = await fetch(`${API_BASE}/operator/pause?operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      throw new Error(`Stream pause command rejected (HTTP ${res.status})`);
+    }
+    return await res.json();
   },
 
   async resumeStream(operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
-    try {
-      const res = await fetch(`${API_BASE}/operator/resume?operator_id=${encodeURIComponent(operatorId)}`, {
-        method: 'POST'
-      });
-      if (res.ok) return await res.json();
-    } catch (e) {}
-    return { status: 'ACTIVE', stream_status: 'ACTIVE', operator_id: operatorId };
+    const res = await fetch(`${API_BASE}/operator/resume?operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      throw new Error(`Stream resume command rejected (HTTP ${res.status})`);
+    }
+    return await res.json();
   },
 
   async applyOverride(freshnessWindow: number, operatorId: string = 'OPERATOR-PRIMARY', passcode: string = ''): Promise<any> {
@@ -208,11 +208,35 @@ export const api = {
   async getOperatorActions(): Promise<any[]> {
     try {
       const res = await fetch(`${API_BASE}/operator/actions`);
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) return await res.json();
+      }
     } catch (e) {}
-    return [
-      { id: 1, action: 'KEY_ROTATION', operator_id: 'OPERATOR-PRIMARY', timestamp: new Date().toISOString() }
-    ];
+    return [];
+  },
+
+  async clearReplayCache(passcode: string, operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
+    const res = await fetch(`${API_BASE}/operator/cache/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        operator_id: operatorId,
+        passcode: passcode
+      })
+    });
+    if (!res.ok) {
+      let errorMsg = `Replay cache flush rejected (HTTP ${res.status})`;
+      try {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await res.json();
+          if (data.detail) errorMsg = data.detail;
+        }
+      } catch {}
+      throw new Error(errorMsg);
+    }
+    return await res.json();
   },
 
   // Archive & Audit
@@ -226,9 +250,12 @@ export const api = {
       if (params.search) query.set('search', params.search);
 
       const res = await fetch(`${API_BASE}/archive/logs?${query.toString()}`);
-      if (res.ok) return await res.json();
+      if (res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) return await res.json();
+      }
     } catch (e) {}
-    return INITIAL_LOGS;
+    return [];
   },
 
   getLogExportUrl(format: 'csv' | 'json'): string {
@@ -311,5 +338,65 @@ export const api = {
       if (res.ok) return await res.json();
     } catch (e) {}
     return { active_packets: 0, archived_packets: 0, total_files: 0, last_archived_at: null };
+  },
+
+  async uploadTelemetryFile(file: File, operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(`${API_BASE}/archive/files/upload?operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!res.ok) {
+      let msg = `File ingestion failed (HTTP ${res.status})`;
+      try {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const err = await res.json();
+          if (err.detail) msg = err.detail;
+        }
+      } catch {}
+      throw new Error(msg);
+    }
+    return await res.json();
+  },
+
+  async ingestSampleFile(sampleType: 'authentic' | 'tampered', operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
+    const res = await fetch(`${API_BASE}/archive/files/sample?sample_type=${sampleType}&operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST'
+    });
+    if (!res.ok) {
+      let msg = `Sample file ingestion failed (HTTP ${res.status})`;
+      try {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const err = await res.json();
+          if (err.detail) msg = err.detail;
+        }
+      } catch {}
+      throw new Error(msg);
+    }
+    return await res.json();
+  },
+
+  async verifyAndArchiveTelemetry(rawPacket: any, operatorId: string = 'OPERATOR-PRIMARY'): Promise<any> {
+    const res = await fetch(`${API_BASE}/archive/verify-and-archive?operator_id=${encodeURIComponent(operatorId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rawPacket)
+    });
+    if (!res.ok) {
+      let msg = `Telemetry verification rejected (HTTP ${res.status})`;
+      try {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const err = await res.json();
+          if (err.detail) msg = err.detail;
+        }
+      } catch {}
+      throw new Error(msg);
+    }
+    return await res.json();
   }
 };

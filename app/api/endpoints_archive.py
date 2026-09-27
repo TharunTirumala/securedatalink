@@ -1,10 +1,20 @@
-from typing import Optional
-from fastapi import APIRouter, Depends, Query, Response
+from typing import Optional, List, Dict, Any
+from pathlib import Path
+import json
+import time
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, Query, Response, HTTPException, UploadFile, File
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
+from app.core.config import settings
+from app.core.logging import logger
+from app.crypto.hasher import SHA256Hasher
 from app.database.connection import get_db
-from app.database.models import SecurityLogRecord, FileProcessingRecord
+from app.database.models import SecurityLogRecord, FileProcessingRecord, PacketRecord
 from app.services.audit_service import audit_service
+from app.services.ws_manager import ws_manager
+from app.processing.pipeline import pipeline
 
 router = APIRouter()
 
@@ -94,13 +104,346 @@ async def get_processed_files(limit: int = 50, db: AsyncSession = Depends(get_db
         for r in records
     ]
 
-from pydantic import BaseModel, Field
-from typing import List, Optional
-import time
-from datetime import datetime, timezone
-from app.database.models import PacketRecord
-from app.services.ws_manager import ws_manager
-from sqlalchemy import func
+@router.post("/files/upload")
+async def upload_telemetry_file(
+    file: UploadFile = File(...),
+    operator_id: str = Query("OPERATOR-PRIMARY"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Uploads and processes a tactical telemetry batch file (.json, .jsonl, .csv).
+    Validates format, checks duplicate hash, executes security pipeline per record,
+    stores FileProcessingRecord, and logs audit trail.
+    """
+    filename = file.filename or "unknown_upload"
+    ext = Path(filename).suffix.lower()
+    
+    if ext not in [".json", ".jsonl", ".csv"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format '{ext}'. Only .json, .jsonl, and .csv are supported."
+        )
+
+    content_bytes = await file.read()
+    if not content_bytes or len(content_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    if len(content_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds maximum permitted tactical limit (10MB).")
+
+    file_hash = SHA256Hasher.digest(content_bytes)
+    file_type = ext.replace(".", "").upper()
+
+    # 1. Duplicate check
+    existing = await db.execute(
+        select(FileProcessingRecord).where(FileProcessingRecord.file_hash == file_hash)
+    )
+    if existing.scalar_one_or_none():
+        await audit_service.log_security_event(
+            event_type="FILE_INGESTION_DUPLICATE_REJECTED",
+            severity="WARNING",
+            source=operator_id,
+            description=f"Duplicate file ingestion rejected: {filename} (hash {file_hash[:16]}...)",
+            details={"filename": filename, "file_hash": file_hash}
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=f"Duplicate file: {filename} with hash {file_hash[:16]}... has already been processed."
+        )
+
+    # 2. Parse records
+    from app.ingestion.file_watcher import file_watcher
+    records, parse_err = file_watcher._parse_records(content_bytes, ext)
+    if parse_err:
+        rec = FileProcessingRecord(
+            filename=filename,
+            file_hash=file_hash,
+            file_type=file_type,
+            record_count=0,
+            status="MALFORMED",
+            error_message=parse_err,
+            processed_at=datetime.now(timezone.utc)
+        )
+        db.add(rec)
+        await db.commit()
+        await audit_service.log_security_event(
+            event_type="FILE_INGESTION_FAILED",
+            severity="CRITICAL",
+            source=operator_id,
+            description=f"Malformed file rejected: {filename} - {parse_err}",
+            details={"filename": filename, "error": parse_err}
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Malformed file content: {parse_err}"
+        )
+
+    if not records:
+        raise HTTPException(status_code=400, detail="File contained no valid telemetry packet records.")
+
+    # 3. Process records through security pipeline
+    processed_count = 0
+    accepted_count = 0
+    blocked_count = 0
+    for record in records:
+        try:
+            res = await pipeline.process_packet(record)
+            processed_count += 1
+            if res.get("action") == "ACCEPTED":
+                accepted_count += 1
+            else:
+                blocked_count += 1
+        except Exception as ex:
+            logger.error(f"Error processing packet from uploaded file {filename}: {ex}")
+
+    # 4. Save processed file record
+    now = datetime.now(timezone.utc)
+    rec = FileProcessingRecord(
+        filename=filename,
+        file_hash=file_hash,
+        file_type=file_type,
+        record_count=processed_count,
+        status="PROCESSED",
+        error_message=None,
+        processed_at=now
+    )
+    db.add(rec)
+    await db.commit()
+    await db.refresh(rec)
+
+    # 5. Save copy to processed dir if possible
+    try:
+        ts = now.strftime("%Y%m%d_%H%M%S")
+        dest = settings.PROCESSED_DIR / f"{ts}_{filename}"
+        dest.write_bytes(content_bytes)
+    except Exception:
+        pass
+
+    # 6. Audit logging
+    await audit_service.log_security_event(
+        event_type="FILE_INGESTION_COMPLETED",
+        severity="INFO",
+        source=operator_id,
+        description=f"File {filename} ingested: {processed_count} packets processed ({accepted_count} accepted, {blocked_count} blocked)",
+        details={
+            "filename": filename,
+            "file_hash": file_hash,
+            "record_count": processed_count,
+            "accepted_count": accepted_count,
+            "blocked_count": blocked_count,
+            "file_type": file_type
+        }
+    )
+
+    # 7. WebSocket broadcast
+    try:
+        await ws_manager.broadcast("file_processed", {
+            "id": rec.id,
+            "filename": filename,
+            "file_hash": file_hash,
+            "record_count": processed_count,
+            "status": "PROCESSED",
+            "processed_at": now.isoformat()
+        })
+    except Exception:
+        pass
+
+    return {
+        "status": "PROCESSED",
+        "id": rec.id,
+        "filename": filename,
+        "file_hash": file_hash,
+        "file_type": file_type,
+        "record_count": processed_count,
+        "accepted_count": accepted_count,
+        "blocked_count": blocked_count,
+        "message": f"Successfully ingested {filename} ({processed_count} records processed: {accepted_count} authentic, {blocked_count} threats filtered)."
+    }
+
+@router.post("/files/sample")
+async def ingest_sample_file(
+    sample_type: str = Query("authentic", pattern="^(authentic|tampered)$"),
+    operator_id: str = Query("OPERATOR-PRIMARY"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Ingests one of the sample telemetry files stored in data/samples.
+    """
+    from app.ingestion.file_watcher import file_watcher
+    sample_filename = f"telemetry_{sample_type}_1790441130.json"
+    sample_path = settings.SAMPLES_DIR / sample_filename
+    
+    if not sample_path.exists():
+        if sample_type == "authentic":
+            sample_records = [
+                {
+                    "packet_id": f"PKT-SMP-AUTH-{int(time.time()*1000)%100000}",
+                    "sequence_num": 1050,
+                    "source": "UAV-ALPHA-01",
+                    "timestamp": time.time(),
+                    "packet_type": "TELEMETRY_POSITION",
+                    "payload": {"latitude": 34.0522, "longitude": -118.2437, "altitude_m": 1500}
+                }
+            ]
+        else:
+            sample_records = [
+                {
+                    "packet_id": f"PKT-SMP-TAMP-{int(time.time()*1000)%100000}",
+                    "sequence_num": 1051,
+                    "source": "UAV-BRAVO-02",
+                    "timestamp": time.time() - 100.0,
+                    "packet_type": "TELEMETRY_POSITION",
+                    "payload": {"latitude": 0.0, "longitude": 0.0, "altitude_m": 0}
+                }
+            ]
+        content_bytes = json.dumps(sample_records, indent=2).encode('utf-8')
+    else:
+        raw = json.loads(sample_path.read_text(encoding='utf-8'))
+        records = raw if isinstance(raw, list) else (raw.get("packets", [raw]))
+        ts = int(time.time() * 1000) % 100000
+        for i, r in enumerate(records):
+            r["packet_id"] = f"PKT-SMP-{sample_type.upper()[:4]}-{ts}-{i}"
+            r["timestamp"] = time.time() if sample_type == "authentic" else (time.time() - 30.0)
+        content_bytes = json.dumps(records, indent=2).encode('utf-8')
+
+    file_hash = SHA256Hasher.digest(content_bytes)
+    filename = f"sample_{sample_type}_{int(time.time())}.json"
+    
+    records, _ = file_watcher._parse_records(content_bytes, ".json")
+    processed_count = 0
+    accepted_count = 0
+    blocked_count = 0
+    for r in records:
+        res = await pipeline.process_packet(r)
+        processed_count += 1
+        if res.get("action") == "ACCEPTED":
+            accepted_count += 1
+        else:
+            blocked_count += 1
+
+    now = datetime.now(timezone.utc)
+    rec = FileProcessingRecord(
+        filename=filename,
+        file_hash=file_hash,
+        file_type="JSON",
+        record_count=processed_count,
+        status="PROCESSED",
+        error_message=None,
+        processed_at=now
+    )
+    db.add(rec)
+    await db.commit()
+    await db.refresh(rec)
+
+    await audit_service.log_security_event(
+        event_type="FILE_INGESTION_COMPLETED",
+        severity="INFO",
+        source=operator_id,
+        description=f"Sample file {filename} ingested: {processed_count} packets processed ({accepted_count} accepted, {blocked_count} blocked)",
+        details={"filename": filename, "file_hash": file_hash, "record_count": processed_count}
+    )
+
+    try:
+        await ws_manager.broadcast("file_processed", {
+            "id": rec.id,
+            "filename": filename,
+            "file_hash": file_hash,
+            "record_count": processed_count,
+            "status": "PROCESSED",
+            "processed_at": now.isoformat()
+        })
+    except Exception:
+        pass
+
+    return {
+        "status": "PROCESSED",
+        "id": rec.id,
+        "filename": filename,
+        "file_hash": file_hash,
+        "record_count": processed_count,
+        "accepted_count": accepted_count,
+        "blocked_count": blocked_count,
+        "message": f"Successfully ingested {filename} with {processed_count} records."
+    }
+
+@router.post("/verify-and-archive")
+async def verify_and_archive_telemetry(
+    raw_packet: Dict[str, Any],
+    operator_id: str = Query("OPERATOR-PRIMARY"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Submits a raw telemetry frame for verification and immediate persistent archival.
+    Enforces business rules: only AUTHENTIC & ACCEPTED packets are archived as verified.
+    If verification fails, rejects archival as verified and logs an audit event.
+    """
+    result = await pipeline.process_packet(raw_packet)
+    action = result.get("action")
+    classification = result.get("classification")
+    packet_id = result.get("packet_id")
+
+    if action != "ACCEPTED" or classification != "AUTHENTIC":
+        await audit_service.log_security_event(
+            event_type="VERIFICATION_FAILURE_ARCHIVE_REJECTED",
+            severity="WARNING",
+            source=operator_id,
+            packet_id=packet_id,
+            description=f"Rejected verified archival for packet {packet_id}: Classification {classification}, Action {action}",
+            details={
+                "packet_id": packet_id,
+                "classification": classification,
+                "action": action,
+                "trust_score": result.get("trust_score"),
+                "auth_status": result.get("auth_status"),
+                "sig_status": result.get("sig_status"),
+                "freshness_status": result.get("freshness_status"),
+                "integrity_status": result.get("integrity_status")
+            }
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=f"Telemetry verification failed ({classification} - {action}). Packet cannot be archived as verified telemetry."
+        )
+
+    pkt_rec = await db.execute(
+        select(PacketRecord).where(PacketRecord.packet_id == packet_id)
+    )
+    p = pkt_rec.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    batch_id = f"BATCH-VERIF-{int(time.time() * 1000)}"
+
+    if p:
+        p.is_archived = True
+        p.archived_at = now
+        p.archived_by = operator_id
+        p.archive_batch_id = batch_id
+        await db.commit()
+
+    await audit_service.log_archive_action(
+        operator_id=operator_id,
+        count=1,
+        batch_id=batch_id,
+        packet_ids=[packet_id]
+    )
+
+    try:
+        await ws_manager.broadcast("data_archived", {
+            "batch_id": batch_id,
+            "count": 1,
+            "operator_id": operator_id,
+            "timestamp": now.isoformat()
+        })
+    except Exception:
+        pass
+
+    return {
+        "status": "VERIFIED_AND_ARCHIVED",
+        "packet_id": packet_id,
+        "classification": classification,
+        "trust_score": result.get("trust_score"),
+        "batch_id": batch_id,
+        "message": f"Packet {packet_id} verified authentic (Trust: {result.get('trust_score')}) and archived to vault."
+    }
 
 class ArchiveRequest(BaseModel):
     packet_ids: Optional[List[str]] = None

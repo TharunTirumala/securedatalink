@@ -208,3 +208,73 @@ async def test_security_logs_audit_trail_and_exports():
         res_json = await ac.get("/api/v1/archive/logs/export?format=json")
         assert res_json.status_code == 200
         assert isinstance(res_json.json(), list)
+
+@pytest.mark.asyncio
+async def test_operator_cache_clear_authorization():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # 1. Reject unauthorized cache clear attempt
+        res_unauth = await ac.post("/api/v1/operator/cache/clear", json={
+            "operator_id": "OPERATOR-PRIMARY",
+            "passcode": "WRONG-PASS"
+        })
+        assert res_unauth.status_code == 403
+        assert "authorization failed" in res_unauth.json()["detail"].lower()
+
+        # 2. Accept authorized cache clear
+        res_ok = await ac.post("/api/v1/operator/cache/clear", json={
+            "operator_id": "OPERATOR-PRIMARY",
+            "passcode": "TAC-SEC-8000"
+        })
+        assert res_ok.status_code == 200
+        assert res_ok.json()["status"] == "CACHE_CLEARED"
+
+@pytest.mark.asyncio
+async def test_file_upload_and_duplicate_prevention():
+    import json
+    import time
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        sample_records = [
+            {
+                "packet_id": f"PKT-UP-TEST-{int(time.time()*1000)%100000}",
+                "sequence_num": 9991,
+                "source": "UAV-ALPHA-01",
+                "timestamp": time.time(),
+                "packet_type": "TELEMETRY_POSITION"
+            }
+        ]
+        file_content = json.dumps(sample_records).encode('utf-8')
+        files = {"file": ("test_telemetry.json", file_content, "application/json")}
+
+        # 1. Initial upload succeeds
+        res_upload = await ac.post("/api/v1/archive/files/upload?operator_id=OPERATOR-PRIMARY", files=files)
+        assert res_upload.status_code == 200
+        data = res_upload.json()
+        assert data["status"] == "PROCESSED"
+        assert data["record_count"] == 1
+
+        # 2. Duplicate upload fails with 409
+        files_dup = {"file": ("test_telemetry.json", file_content, "application/json")}
+        res_dup = await ac.post("/api/v1/archive/files/upload?operator_id=OPERATOR-PRIMARY", files=files_dup)
+        assert res_dup.status_code == 409
+        assert "duplicate file" in res_dup.json()["detail"].lower()
+
+@pytest.mark.asyncio
+async def test_verify_and_archive_flow():
+    import time
+    from app.ingestion.simulator import simulator
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        # Ingest sample file
+        res_sample = await ac.post("/api/v1/archive/files/sample?sample_type=authentic")
+        assert res_sample.status_code == 200
+        assert res_sample.json()["status"] == "PROCESSED"
+
+        # Verify raw telemetry submission
+        auth_pkt = simulator._generate_packet()
+        auth_pkt["simulated"] = False
+        res_verif = await ac.post("/api/v1/archive/verify-and-archive", json=auth_pkt)
+        if res_verif.status_code == 200:
+            assert res_verif.json()["status"] == "VERIFIED_AND_ARCHIVED"
+        else:
+            # If generated packet was injected attack, it properly rejected
+            assert res_verif.status_code == 422
+

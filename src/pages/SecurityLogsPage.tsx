@@ -3,7 +3,7 @@ import { SecurityLog } from '../types/telemetry';
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
 import { Badge } from '../components/common/Badge';
-import { ScrollText, Search, Download, RefreshCw, Filter, ShieldCheck, Info, X, ExternalLink } from 'lucide-react';
+import { ScrollText, Search, Download, RefreshCw, Filter, ShieldCheck, Info, X, ExternalLink, AlertTriangle } from 'lucide-react';
 
 export const SecurityLogsPage: React.FC = () => {
   const [logs, setLogs] = useState<SecurityLog[]>([]);
@@ -11,9 +11,11 @@ export const SecurityLogsPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [selectedLog, setSelectedLog] = useState<SecurityLog | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const fetchLogs = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const data = await api.getSecurityLogs({
         limit: 100,
@@ -21,8 +23,9 @@ export const SecurityLogsPage: React.FC = () => {
         severity: severityFilter !== 'ALL' ? severityFilter : undefined,
       });
       setLogs(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to fetch security logs:', e);
+      setErrorMsg(e.message || 'Failed to fetch audit history from server.');
     } finally {
       setLoading(false);
     }
@@ -92,6 +95,17 @@ export const SecurityLogsPage: React.FC = () => {
           </a>
         </div>
       </div>
+
+      {/* Error Notification Banner */}
+      {errorMsg && (
+        <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-center justify-between space-x-2 shadow-xs">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+            <span className="font-semibold">{errorMsg}</span>
+          </div>
+          <button onClick={() => setErrorMsg('')} className="text-rose-600 hover:text-rose-800 font-bold ml-2">×</button>
+        </div>
+      )}
 
       {/* Compliance / Immutability Banner */}
       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 flex items-center justify-between">
@@ -165,9 +179,15 @@ export const SecurityLogsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-150">
-              {logs.length === 0 ? (
+              {loading ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-10 text-center text-slate-400">
+                    Loading immutable audit trail from server...
+                  </td>
+                </tr>
+              ) : logs.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-slate-400">
                     No matching security log entries found.
                   </td>
                 </tr>

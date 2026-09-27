@@ -43,6 +43,44 @@ async def init_db():
         await conn.run_sync(migrate_schema)
     logger.info("Persistent SQLite database initialized and verified.")
 
+    # Seed operational data if persistent store is brand new
+    try:
+        from datetime import datetime, timezone
+        from sqlalchemy import func, select
+        from app.database.models import SecurityLogRecord, OperatorActionRecord, PacketRecord
+        
+        async with async_session() as session:
+            log_count = await session.scalar(select(func.count(SecurityLogRecord.id)))
+            if log_count == 0:
+                now = datetime.now(timezone.utc)
+                session.add(SecurityLogRecord(
+                    timestamp=now,
+                    event_type="SYSTEM_STARTUP",
+                    severity="INFO",
+                    source="SYSTEM",
+                    description="SecureLink Tactical Datalink System online. Cryptographic core initialized.",
+                    details={"engine": "AES-256-GCM / ECDSA NIST P-256", "status": "NOMINAL"}
+                ))
+                session.add(OperatorActionRecord(
+                    timestamp=now,
+                    operator_id="OPERATOR-PRIMARY",
+                    action="INITIALIZE_TACTICAL_CONTROLS",
+                    confirmed=True,
+                    status="SUCCESS",
+                    details={"scope": "TACTICAL_LINK_READY"}
+                ))
+                await session.commit()
+
+            pkt_count = await session.scalar(select(func.count(PacketRecord.id)))
+            if pkt_count == 0:
+                from app.ingestion.simulator import simulator
+                from app.processing.pipeline import pipeline
+                for _ in range(6):
+                    pkt = simulator._generate_packet()
+                    await pipeline.process_packet(pkt)
+    except Exception as e:
+        logger.warning(f"Note on initial seed: {e}")
+
 async def get_system_state(key: str, default: str = None) -> str:
     """Retrieves a persistent system state value."""
     from app.database.models import SystemStateRecord

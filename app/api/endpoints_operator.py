@@ -1,3 +1,4 @@
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -146,6 +147,64 @@ async def security_override(
         "freshness_window_seconds": eff_window,
         "operator_id": eff_operator,
         "message": f"Freshness tolerance window successfully updated to {eff_window:.1f}s"
+    }
+
+@router.post("/cache/clear")
+async def clear_replay_cache(
+    request: Request,
+    operator_id: Optional[str] = Query(None),
+    passcode: Optional[str] = Query(None),
+    x_operator_passcode: Optional[str] = Header(None, alias="X-Operator-Passcode")
+):
+    """
+    Operator Command: Flush Replay Nonce Cache.
+    Requires server-side authorization passcode and authorized operator ID.
+    """
+    body_data = {}
+    try:
+        body_data = await request.json()
+    except Exception:
+        body_data = {}
+
+    eff_operator = str(body_data.get("operator_id", operator_id) or "OPERATOR-PRIMARY")
+    eff_passcode = str(body_data.get("passcode", passcode) or x_operator_passcode or "")
+
+    is_authorized_op = eff_operator in settings.AUTHORIZED_OPERATORS
+    is_valid_passcode = (eff_passcode == settings.OPERATOR_OVERRIDE_PASSCODE)
+
+    if not is_authorized_op or not is_valid_passcode:
+        reason = "Unrecognized operator ID" if not is_authorized_op else "Invalid tactical override passcode"
+        await audit_service.log_authorization_failure(
+            operator_id=eff_operator,
+            attempted_action="FLUSH_REPLAY_CACHE",
+            details={"reason": reason, "operator_id": eff_operator}
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Operator authorization failed: {reason}. Valid authorization passcode required."
+        )
+
+    cleared_count = len(freshness_verifier._nonce_cache)
+    freshness_verifier._nonce_cache.clear()
+
+    await audit_service.log_operator_action(
+        action=f"FLUSH_REPLAY_CACHE ({cleared_count} nonces cleared)",
+        operator_id=eff_operator,
+        confirmed=True,
+        status="EXECUTED",
+        details={"cleared_count": cleared_count}
+    )
+
+    await ws_manager.broadcast("cache_cleared", {
+        "operator_id": eff_operator,
+        "cleared_count": cleared_count
+    })
+
+    return {
+        "status": "CACHE_CLEARED",
+        "cleared_count": cleared_count,
+        "operator_id": eff_operator,
+        "message": f"Successfully flushed {cleared_count} nonce(s) from replay cache."
     }
 
 @router.get("/simulator")

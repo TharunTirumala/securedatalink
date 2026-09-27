@@ -36,7 +36,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     {
       title: 'OPERATIONS',
       items: [
-        { id: 'logs', label: 'Security Logs', icon: ScrollText },
+        { id: 'logs', label: 'Audit History', icon: ScrollText },
         { id: 'keys', label: 'Key Management', icon: KeyRound },
         { id: 'architecture', label: 'System Architecture', icon: Network },
       ]
@@ -44,8 +44,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     {
       title: 'CONTROL',
       items: [
-        { id: 'override', label: 'Operator Override', icon: SlidersHorizontal },
-        { id: 'archive', label: 'Data Archive', icon: Archive },
+        { id: 'override', label: 'Operator Control', icon: SlidersHorizontal },
+        { id: 'archive', label: 'Tactical Data Archive', icon: Archive },
       ]
     }
   ];
