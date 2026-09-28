@@ -61,6 +61,7 @@ async def start_demo(operator_id: str = "OPERATOR-PRIMARY"):
     await pipeline.resume_stream()
     await simulator.start()
     await set_system_state("demo_state", "RUNNING")
+    await simulator.generate_and_process_next_packet()
     await audit_service.log_stream_state(
         operator_id=operator_id,
         state="RUNNING",

@@ -19,6 +19,13 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     Returns live aggregated tactical datalink metrics from the persistent database
     and active backend modules.
     """
+    import os
+    saved_state = await get_system_state("demo_state", None)
+    if saved_state == "RUNNING" and simulator.enabled and not pipeline.stream_paused:
+        is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+        if is_serverless or simulator._task is None or simulator._task.done():
+            await simulator.generate_and_process_next_packet()
+
     # Total evaluated (active buffer)
     total_result = await db.execute(
         select(func.count(PacketRecord.id)).where(PacketRecord.is_archived == False)

@@ -59,6 +59,15 @@ class TelemetrySimulator:
         self._history_nonces = []
         logger.info("Simulator: Nonce history reset for fresh run.")
 
+    async def generate_and_process_next_packet(self) -> Optional[Dict[str, Any]]:
+        """Generates a single simulated packet and executes the 10-stage processing pipeline."""
+        if not self._initialized_seq:
+            await self.sync_sequence_from_db()
+        if self.enabled and not pipeline.stream_paused:
+            raw_packet = self._generate_packet()
+            return await pipeline.process_packet(raw_packet)
+        return None
+
     async def start(self):
         if not self._initialized_seq:
             await self.sync_sequence_from_db()
