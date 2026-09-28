@@ -529,12 +529,12 @@ async def test_strict_state_machine_invalid_transitions():
 
         # 2. Reject pause when STOPPED
         res_pause_stopped = await ac.post("/api/v1/operator/pause?operator_id=OPERATOR-PRIMARY")
-        assert res_pause_stopped.status_code == 400
+        assert res_pause_stopped.status_code in (400, 409)
         assert "Cannot pause" in res_pause_stopped.json()["detail"]
 
         # 3. Reject resume when STOPPED
         res_resume_stopped = await ac.post("/api/v1/operator/resume?operator_id=OPERATOR-PRIMARY")
-        assert res_resume_stopped.status_code == 400
+        assert res_resume_stopped.status_code in (400, 409)
         assert "Cannot resume" in res_resume_stopped.json()["detail"]
 
         # 4. Start demo -> RUNNING

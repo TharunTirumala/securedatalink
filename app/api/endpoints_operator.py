@@ -132,8 +132,8 @@ async def pause_stream(operator_id: str = "OPERATOR-PRIMARY"):
     current_state = await get_system_state("demo_state", "STOPPED")
     if current_state == "STOPPED":
         raise HTTPException(
-            status_code=400,
-            detail="Cannot pause demonstration when state is STOPPED. Click START DEMO first."
+            status_code=409,
+            detail="Invalid transition: Cannot pause demonstration when state is STOPPED. Click START DEMO first."
         )
 
     if current_state == "PAUSED":
@@ -179,8 +179,8 @@ async def resume_stream(operator_id: str = "OPERATOR-PRIMARY"):
     current_state = await get_system_state("demo_state", "STOPPED")
     if current_state == "STOPPED":
         raise HTTPException(
-            status_code=400,
-            detail="Cannot resume demonstration when state is STOPPED. Click START DEMO to begin."
+            status_code=409,
+            detail="Invalid transition: Cannot resume demonstration when state is STOPPED. Click START DEMO to begin."
         )
 
     if current_state == "RUNNING" and not pipeline.stream_paused:
