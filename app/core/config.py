@@ -1,6 +1,6 @@
 from pathlib import Path
 import os
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # Base Directory paths
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -59,7 +59,14 @@ class Settings(BaseModel):
 
     # Operator Security & Authorization
     OPERATOR_OVERRIDE_PASSCODE: str = os.getenv("OPERATOR_OVERRIDE_PASSCODE", "TAC-SEC-8000")
+    OPERATOR_AUTH_TOKEN: str = os.getenv("SECURELINK_OPERATOR_TOKEN", "TAC-OP-TOKEN-9871")
     AUTHORIZED_OPERATORS: list = ["OPERATOR-PRIMARY", "OPERATOR-BACKUP", "TACTICAL-SUPERVISOR", "CHIEF-SECURITY-OFFICER"]
+    CORS_ORIGINS: list = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000"
+    ]
 
 
 settings = Settings()

@@ -3,7 +3,7 @@ import json
 import csv
 import io
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -172,14 +172,14 @@ def normalize_and_seal_telemetry(raw_item: Dict[str, Any], sequence_offset: int 
         "sequence_num": seq,
         "source": device_id,
         "timestamp": pkt_timestamp,
-        "packet_type": packet_type,
+        "packet_type": f"{packet_type} (Server-Sealed Simulation)" if raw_item.get("simulated") else packet_type,
         "key_id": active_key_id,
         "iv": iv.hex(),
         "tag": tag.hex(),
         "ciphertext": ciphertext.hex(),
         "signature": signature.hex(),
         "payload_hash": payload_hash,
-        "simulated": False,
+        "simulated": bool(raw_item.get("simulated", False)),
         "allow_custom_ingest": True
     }
 

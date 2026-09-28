@@ -1,7 +1,6 @@
 import time
 import json
-import base64
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime, timezone
 
 from app.core.logging import logger
@@ -105,6 +104,7 @@ class TacticalProcessingPipeline:
         is_fresh = False
         is_unique_nonce = False
         freshness_status = "FAIL"
+        fresh_msg = ""
         
         if format_valid:
             is_fresh, is_unique_nonce, fresh_msg = freshness_verifier.verify(
@@ -121,7 +121,9 @@ class TacticalProcessingPipeline:
         # -------------------------------------------------------------
         auth_verified = False
         auth_status = "FAILED"
+        auth_msg = ""
         decrypted_payload = None
+        plaintext_bytes = None
         key_bytes = key_manager.get_key_bytes(key_id)
         
         if format_valid and key_bytes:
@@ -159,6 +161,7 @@ class TacticalProcessingPipeline:
         # -------------------------------------------------------------
         sig_verified = False
         sig_status = "INVALID"
+        sig_msg = ""
         
         if format_valid:
             try:
@@ -179,33 +182,32 @@ class TacticalProcessingPipeline:
             sig_msg = "Format invalid"
 
         # -------------------------------------------------------------
-        # Stage 6: Integrity Check (SHA-256)
+        # Stage 6: Integrity Check (SHA-256 Direct Plaintext Verify)
         # -------------------------------------------------------------
         integrity_passed = False
         integrity_status = "FAIL"
         
-        if auth_verified and decrypted_payload is not None:
-            # Recompute digest over the decrypted plaintext
-            reconstructed_bytes = json.dumps(decrypted_payload, sort_keys=True).encode('utf-8')
-            if SHA256Hasher.verify(reconstructed_bytes, payload_hash):
+        if auth_verified and plaintext_bytes is not None:
+            # Verify directly over raw decrypted bytes without redundant json.dumps roundtrip
+            if SHA256Hasher.verify(plaintext_bytes, payload_hash):
                 integrity_passed = True
                 integrity_status = "PASS"
             else:
                 integrity_status = "FAIL"
         elif format_valid and payload_hash:
-            # Check if payload_hash exists and is valid 64-char hex
             integrity_status = "FAIL"
 
         # -------------------------------------------------------------
         # Stage 7: Packet Classification
         # -------------------------------------------------------------
+        source_is_known = source in AUTHORIZED_NODES
+        is_source_filtered = adaptive_filter.is_source_filtered(source)
         source_authorized = bool(
             source
             and source != "UNKNOWN"
-            and not adaptive_filter.is_source_filtered(source)
-            and len(source) <= 64
+            and not is_source_filtered
+            and (source_is_known or len(source) <= 64)
         )
-        is_source_filtered = adaptive_filter.is_source_filtered(source)
         
         classification, action = packet_classifier.classify(
             format_valid=format_valid,
@@ -246,11 +248,11 @@ class TacticalProcessingPipeline:
         if action == "ACCEPTED":
             reason = "Cryptographically authenticated & verified (AES-256-GCM + ECDSA P-256 + SHA-256)"
         elif classification == "REPLAYED":
-            reason = fresh_msg if 'fresh_msg' in locals() and fresh_msg else "Replay attack detected (stale timestamp or reused nonce)"
+            reason = fresh_msg if fresh_msg else "Replay attack detected (stale timestamp or reused nonce)"
         elif classification == "TAMPERED":
-            reason = auth_msg if 'auth_msg' in locals() and auth_msg else "AES-256-GCM authentication tag mismatch (tampering detected)"
+            reason = auth_msg if auth_msg else "AES-256-GCM authentication tag mismatch (tampering detected)"
         elif classification == "INVALID SIGNATURE":
-            reason = sig_msg if 'sig_msg' in locals() and sig_msg else "ECDSA P-256 digital signature invalid"
+            reason = sig_msg if sig_msg else "ECDSA P-256 digital signature invalid"
         elif classification == "INTEGRITY FAILURE":
             reason = "SHA-256 payload digest mismatch"
         elif classification == "INVALID FORMAT":
@@ -293,7 +295,7 @@ class TacticalProcessingPipeline:
         else:
             c2_service.record_dropped(action)
 
-        # Persist to database
+        # Persist to database in a single session transaction
         try:
             async with async_session() as session:
                 record = PacketRecord(
@@ -326,27 +328,41 @@ class TacticalProcessingPipeline:
                 await session.commit()
                 await session.refresh(record)
                 result_dict["id"] = record.id
-        except Exception as e:
-            logger.error(f"Failed to persist packet {packet_id} to DB: {e}")
 
-        # Security Logging & Threat Detection
+                # Consolidated Security Logging & Threat Detection within same session
+                if action in ["BLOCKED", "REJECTED", "FILTERED"]:
+                    severity = "CRITICAL" if classification in ["TAMPERED", "REPLAYED"] else "WARNING"
+                    await audit_service.log_threat_event(
+                        packet_id=packet_id,
+                        source=source,
+                        event=f"Security violation detected: {classification}",
+                        severity=severity,
+                        action=action,
+                        details={
+                            "trust_score": trust_score,
+                            "auth": auth_status,
+                            "sig": sig_status,
+                            "freshness": freshness_status,
+                            "integrity": integrity_status,
+                            "simulated": simulated
+                        },
+                        session=session
+                    )
+                else:
+                    await audit_service.log_security_event(
+                        event_type="PACKET_AUTHENTICATED",
+                        severity="INFO",
+                        source=source,
+                        packet_id=packet_id,
+                        description=f"Packet #{sequence_num} authenticated from {source} (Trust: {trust_score}/100)",
+                        session=session
+                    )
+        except Exception as e:
+            logger.error(f"Failed to persist packet {packet_id} or audit to DB: {e}")
+
+        # WebSocket broadcast for threats
         if action in ["BLOCKED", "REJECTED", "FILTERED"]:
             severity = "CRITICAL" if classification in ["TAMPERED", "REPLAYED"] else "WARNING"
-            await audit_service.log_threat_event(
-                packet_id=packet_id,
-                source=source,
-                event=f"Security violation detected: {classification}",
-                severity=severity,
-                action=action,
-                details={
-                    "trust_score": trust_score,
-                    "auth": auth_status,
-                    "sig": sig_status,
-                    "freshness": freshness_status,
-                    "integrity": integrity_status,
-                    "simulated": simulated
-                }
-            )
             await ws_manager.broadcast("threat_detected", {
                 "packet_id": packet_id,
                 "source": source,
@@ -356,15 +372,6 @@ class TacticalProcessingPipeline:
                 "timestamp": created_at_iso,
                 "trust_score": trust_score
             })
-        else:
-            # Audit log for authentic arrival
-            await audit_service.log_security_event(
-                event_type="PACKET_AUTHENTICATED",
-                severity="INFO",
-                source=source,
-                packet_id=packet_id,
-                description=f"Packet #{sequence_num} authenticated from {source} (Trust: {trust_score}/100)"
-            )
 
         # Broadcast packet outcome over WebSocket
         await ws_manager.broadcast("packet_processed", result_dict)

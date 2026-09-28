@@ -1,5 +1,8 @@
 import React from 'react';
 import { Packet } from '../../types/telemetry';
+import { formatTime } from '../../utils/formatters';
+import { Badge } from '../common/Badge';
+import { SourceBadge } from '../common/SourceBadge';
 
 interface RealTimeTelemetryFeedProps {
   packets: Packet[];
@@ -14,9 +17,9 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
   simulatorActive,
   onSelectPacket
 }) => {
-  // STRICT REQUIREMENT: Keep only the latest 10 packets, newest at the top
   const latestTen = packets.slice(0, 10);
   const totalCount = totalProcessed !== undefined ? totalProcessed : packets.length;
+  const now = Date.now();
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg shadow-xs overflow-hidden w-full min-w-0">
@@ -29,7 +32,7 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
           <div className="text-xs font-semibold mt-0.5 flex items-center space-x-1.5">
             <span className={`w-2 h-2 rounded-full ${simulatorActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
             <span className={simulatorActive ? 'text-emerald-700' : 'text-slate-500'}>
-              {simulatorActive ? 'LIVE • SIMULATION MODE' : 'LIVE • STANDBY'}
+              {simulatorActive ? 'LIVE • SIMULATION ACTIVE' : 'STANDBY • ENGINE READY'}
             </span>
           </div>
         </div>
@@ -65,9 +68,10 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
               </tr>
             ) : (
               latestTen.map((pkt, idx) => {
-                const timeStr = new Date(pkt.timestamp * 1000).toTimeString().slice(0, 8);
-                const isVerified = pkt.auth_status === 'VERIFIED' || pkt.action === 'ACCEPTED';
-                const isAccepted = pkt.action === 'ACCEPTED';
+                const timeStr = formatTime(pkt.timestamp);
+                const isVerified = pkt.auth_status === 'VERIFIED';
+                const isNew = idx === 0 && now - (pkt.timestamp * 1000) < 5000;
+                const isReplay = pkt.classification === 'REPLAYED';
 
                 return (
                   <tr
@@ -79,9 +83,14 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
                     <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
                       <div className="flex items-center space-x-1.5">
                         <span>#{pkt.sequence_num || pkt.packet_id.replace('PKT-', '')}</span>
-                        {idx === 0 && (
-                          <span className="text-[9px] font-sans px-1 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold">
+                        {isNew && (
+                          <span className="text-[9px] font-sans px-1 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold animate-pulse">
                             NEW
+                          </span>
+                        )}
+                        {isReplay && (
+                          <span className="text-[9px] font-sans px-1 py-0.2 rounded bg-amber-100 text-amber-800 font-bold">
+                            REPLAY
                           </span>
                         )}
                       </div>
@@ -90,10 +99,10 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
                     {/* SOURCE */}
                     <td className="py-3 px-4 font-medium text-slate-700 whitespace-nowrap truncate">
                       <div className="flex items-center space-x-1.5">
-                        <span className="truncate">{pkt.source}</span>
+                        <SourceBadge source={pkt.source} />
                         {pkt.simulated ? (
-                          <span className="text-[9px] font-sans px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold border border-slate-200 shrink-0">
-                            SIMULATOR
+                          <span className="text-[9px] font-sans px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold border border-slate-200 shrink-0" title="Simulated Tactical Telemetry">
+                            SIM
                           </span>
                         ) : pkt.packet_type?.toUpperCase().includes('CSV') ? (
                           <span className="text-[9px] font-sans px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold border border-amber-200 shrink-0">
@@ -123,6 +132,11 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
                           VERIFIED
                         </span>
+                      ) : pkt.auth_status === 'SKIPPED' ? (
+                        <span className="inline-flex items-center text-slate-500 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mr-1.5"></span>
+                          SKIPPED
+                        </span>
                       ) : (
                         <span className="inline-flex items-center text-rose-700 font-semibold">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mr-1.5"></span>
@@ -148,15 +162,7 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
 
                     {/* RESULT */}
                     <td className="py-3 px-4 text-right whitespace-nowrap">
-                      {isAccepted ? (
-                        <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          ACCEPTED
-                        </span>
-                      ) : (
-                        <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
-                          BLOCKED
-                        </span>
-                      )}
+                      <Badge label={pkt.action} type="action" />
                     </td>
                   </tr>
                 );
@@ -164,9 +170,6 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
             )}
           </tbody>
         </table>
-      </div>
-      <div className="px-5 py-2.5 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-        <span>Click any packet to inspect detailed cryptographic verification</span>
       </div>
     </div>
   );

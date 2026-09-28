@@ -2,11 +2,13 @@ import sys
 import os
 import json
 import time
+import argparse
 from pathlib import Path
 
-# Add backend to sys.path so we can use backend crypto libraries
+# Add project root to sys.path so app packages resolve correctly
 project_root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(project_root / "backend"))
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from app.crypto.aes_gcm import AESGCMProcessor
 from app.crypto.ecdsa_signer import ecdsa_processor
@@ -14,11 +16,35 @@ from app.crypto.hasher import SHA256Hasher
 from app.crypto.key_manager import key_manager
 from app.core.config import settings
 
-def create_packet(packet_id: str, seq: int, source: str, scenario: str = "AUTHENTIC", key_id: str = None) -> dict:
+def create_packet(
+    packet_id: str,
+    seq: int,
+    source: str,
+    scenario: str = "AUTHENTIC",
+    key_id: str | None = None,
+    replayed_from: dict | None = None
+) -> dict:
     active_key = key_manager.get_key_bytes()
-    key_id = key_id or key_manager.active_key_id
+    effective_key_id = key_id or key_manager.active_key_id
     now = time.time()
     
+    if scenario == "TRUE_REPLAY" and replayed_from:
+        # Exact replay of previously recorded authentic packet
+        return {
+            "packet_id": f"{replayed_from['packet_id']}-REPLAY",
+            "sequence_num": replayed_from["sequence_num"],
+            "source": replayed_from["source"],
+            "timestamp": replayed_from["timestamp"],
+            "packet_type": replayed_from.get("packet_type", "Telemetry"),
+            "key_id": replayed_from.get("key_id", effective_key_id),
+            "iv": replayed_from["iv"],
+            "tag": replayed_from["tag"],
+            "ciphertext": replayed_from["ciphertext"],
+            "signature": replayed_from["signature"],
+            "payload_hash": replayed_from["payload_hash"],
+            "simulated": False
+        }
+
     payload = {
         "latitude": 34.0537,
         "longitude": -118.2427,
@@ -52,10 +78,10 @@ def create_packet(packet_id: str, seq: int, source: str, scenario: str = "AUTHEN
     hash_hex = payload_hash
     
     if scenario == "REPLAY":
-        # Stale timestamp 30s ago
+        # Stale timestamp (outside sliding freshness window)
         ts = now - 30.0
     elif scenario == "TAMPERED":
-        # Alter ciphertext
+        # Inverted byte in ciphertext
         ct_bytes = bytearray(ciphertext)
         ct_bytes[0] ^= 0x55
         ct_hex = ct_bytes.hex()
@@ -72,7 +98,7 @@ def create_packet(packet_id: str, seq: int, source: str, scenario: str = "AUTHEN
         "source": source,
         "timestamp": ts,
         "packet_type": "Telemetry",
-        "key_id": key_id,
+        "key_id": effective_key_id,
         "iv": iv_hex,
         "tag": tag_hex,
         "ciphertext": ct_hex,
@@ -81,24 +107,33 @@ def create_packet(packet_id: str, seq: int, source: str, scenario: str = "AUTHEN
         "simulated": False
     }
 
-def main():
-    dest_dir = settings.INCOMING_DIR
-    if len(sys.argv) > 1 and sys.argv[1] == "--samples":
-        dest_dir = settings.SAMPLES_DIR
+def atomic_write_json(file_path: Path, data: list):
+    """Writes to a temporary file first, then atomically renames to prevent partial reads."""
+    temp_path = file_path.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(temp_path, file_path)
 
+def main():
+    parser = argparse.ArgumentParser(description="SecureLink Tactical Telemetry Sample Generator")
+    parser.add_argument("--samples", action="store_true", help="Write sample files to data/samples instead of data/incoming")
+    parser.add_argument("--source", default="UAV-BRAVO-02", help="Tactical source node identifier")
+    args = parser.parse_args()
+
+    dest_dir = settings.SAMPLES_DIR if args.samples else settings.INCOMING_DIR
+    dest_dir.mkdir(parents=True, exist_ok=True)
     timestamp_str = int(time.time())
     
-    # 1. Authentic packet file
-    auth_packet = create_packet(f"PKT-AUTH-{timestamp_str}", 2001, "UAV-BRAVO-02", "AUTHENTIC")
+    # 1. Authentic telemetry packet
+    auth_packet = create_packet(f"PKT-AUTH-{timestamp_str}", 2001, args.source, "AUTHENTIC")
     auth_file = dest_dir / f"telemetry_authentic_{timestamp_str}.json"
-    auth_file.write_text(json.dumps([auth_packet], indent=2))
-    print(f"Generated authentic file: {auth_file.name} in {dest_dir}")
+    atomic_write_json(auth_file, [auth_packet])
+    print(f"Generated authentic file (atomic): {auth_file.name} in {dest_dir}")
 
     # 2. Tampered test packet
-    tampered_packet = create_packet(f"PKT-TAMP-{timestamp_str}", 2002, "UAV-BRAVO-02", "TAMPERED")
+    tampered_packet = create_packet(f"PKT-TAMP-{timestamp_str}", 2002, args.source, "TAMPERED")
     tamp_file = dest_dir / f"telemetry_tampered_{timestamp_str}.json"
-    tamp_file.write_text(json.dumps([tampered_packet], indent=2))
-    print(f"Generated tampered file: {tamp_file.name} in {dest_dir}")
+    atomic_write_json(tamp_file, [tampered_packet])
+    print(f"Generated tampered file (atomic): {tamp_file.name} in {dest_dir}")
 
 if __name__ == "__main__":
     main()

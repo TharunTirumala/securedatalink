@@ -1,3 +1,18 @@
+export type Classification =
+  | 'AUTHENTIC'
+  | 'REPLAYED'
+  | 'TAMPERED'
+  | 'INVALID SIGNATURE'
+  | 'INTEGRITY FAILURE'
+  | 'INVALID FORMAT'
+  | 'FILTERED';
+
+export type Action = 'ACCEPTED' | 'BLOCKED' | 'REJECTED' | 'FILTERED';
+
+export type Severity = 'CRITICAL' | 'HIGH' | 'WARNING' | 'MEDIUM' | 'LOW' | 'INFO';
+
+export type VerificationStatus = 'VERIFIED' | 'FAILED' | 'SKIPPED' | 'PASS' | 'FAIL' | 'INVALID';
+
 export interface TelemetryData {
   latitude: number;
   longitude: number;
@@ -48,15 +63,20 @@ export interface Packet {
   freshness_status: 'PASS' | 'FAIL';
   sig_status: 'VERIFIED' | 'INVALID' | 'SKIPPED';
   integrity_status: 'PASS' | 'FAIL';
-  classification: 'AUTHENTIC' | 'REPLAYED' | 'TAMPERED' | 'INVALID SIGNATURE' | 'INTEGRITY FAILURE' | 'INVALID FORMAT' | 'FILTERED';
+  classification: Classification;
   trust_score: number;
   trust_details?: TrustDetails;
-  action: 'ACCEPTED' | 'BLOCKED' | 'REJECTED' | 'FILTERED';
+  action: Action;
   reason?: string;
   latency_ms: number;
   decrypted_payload?: TelemetryData;
   simulated: boolean;
   created_at: string;
+}
+
+export interface ArchivedPacket extends Packet {
+  archived_at: string;
+  archive_batch_id?: string;
 }
 
 export interface ThreatEvent {
@@ -65,8 +85,8 @@ export interface ThreatEvent {
   packet_id: string;
   source: string;
   event: string;
-  severity: 'CRITICAL' | 'HIGH' | 'WARNING' | 'MEDIUM' | 'LOW' | 'INFO';
-  action: 'BLOCKED' | 'REJECTED' | 'FILTERED';
+  severity: Severity;
+  action: Action;
   details?: Record<string, any>;
 }
 
@@ -151,4 +171,32 @@ export interface ProcessedFile {
   status: string;
   error_message?: string;
   processed_at: string;
+}
+
+export interface ImportResult {
+  status: string;
+  message?: string;
+  file_id?: number;
+  record_count?: number;
+  imported?: number;
+  failed?: number;
+  errors?: string[];
+  [key: string]: any;
+}
+
+export interface WsEvents {
+  connection_change: { connected: boolean };
+  packet_processed: Packet;
+  threat_detected: ThreatEvent;
+  key_status_changed: KeyMetadata;
+  system_status_changed: {
+    stream_status?: 'ACTIVE' | 'PAUSED' | 'STOPPED';
+    demo_state?: 'STOPPED' | 'RUNNING' | 'PAUSED';
+    [key: string]: any;
+  };
+  security_log_added: SecurityLog;
+  file_processed: { filename?: string; file_id?: number; record_count?: number };
+  data_archived: { count?: number; batch_id?: string };
+  data_restored: { packet_id?: string };
+  [key: string]: any;
 }

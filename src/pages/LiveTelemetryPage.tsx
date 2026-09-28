@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Packet } from '../types/telemetry';
 import { TelemetryTable } from '../components/telemetry/TelemetryTable';
 import { PacketDetailModal } from '../components/telemetry/PacketDetailModal';
-import { Search, Filter, Radio, Download, RefreshCw } from 'lucide-react';
+import { Search, RefreshCw } from 'lucide-react';
 
 interface LiveTelemetryPageProps {
   packets: Packet[];

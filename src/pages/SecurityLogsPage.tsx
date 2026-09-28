@@ -3,7 +3,8 @@ import { SecurityLog } from '../types/telemetry';
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
 import { Badge } from '../components/common/Badge';
-import { ScrollText, Search, Download, RefreshCw, Filter, ShieldCheck, Info, X, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Search, Download, RefreshCw, ShieldCheck, Info, X, AlertTriangle } from 'lucide-react';
+import { formatUtc, formatIso } from '../utils/formatters';
 
 export const SecurityLogsPage: React.FC = () => {
   const [logs, setLogs] = useState<SecurityLog[]>([]);
@@ -178,7 +179,7 @@ export const SecurityLogsPage: React.FC = () => {
                 <th className="py-2.5 px-3 text-right">Details</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-150">
+            <tbody className="divide-y divide-slate-200">
               {loading ? (
                 <tr>
                   <td colSpan={7} className="py-10 text-center text-slate-400">
@@ -199,7 +200,7 @@ export const SecurityLogsPage: React.FC = () => {
                     className="hover:bg-slate-50 transition-colors cursor-pointer"
                   >
                     <td className="py-2.5 px-3 font-mono text-slate-500 whitespace-nowrap">
-                      {log.timestamp ? new Date(log.timestamp).toISOString().replace('T', ' ').slice(0, 19) : ''}
+                      {formatUtc(log.timestamp)}
                     </td>
                     <td className="py-2.5 px-3">
                       <Badge label={log.severity} type="severity" />
@@ -259,7 +260,7 @@ export const SecurityLogsPage: React.FC = () => {
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Timestamp (UTC)</span>
                   <span className="font-mono text-slate-800">
-                    {selectedLog.timestamp ? new Date(selectedLog.timestamp).toISOString() : '—'}
+                    {formatIso(selectedLog.timestamp)}
                   </span>
                 </div>
                 <div>

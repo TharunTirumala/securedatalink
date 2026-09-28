@@ -1,7 +1,8 @@
 import React from 'react';
 import { ThreatEvent } from '../../types/telemetry';
 import { Badge } from '../common/Badge';
-import { ShieldAlert, AlertTriangle } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
+import { formatTime } from '../../utils/formatters';
 
 interface ThreatFeedProps {
   threats: ThreatEvent[];
@@ -25,7 +26,7 @@ export const ThreatFeed: React.FC<ThreatFeedProps> = ({ threats, limit = 10 }) =
         </span>
       </div>
 
-      <div className="divide-y divide-slate-150 flex-1 overflow-y-auto max-h-[360px]">
+      <div className="divide-y divide-slate-200 flex-1 overflow-y-auto max-h-[360px]">
         {displayThreats.length === 0 ? (
           <div className="py-8 text-center text-slate-400 text-xs">
             No active threat events detected. Tactical perimeter secure.
@@ -33,7 +34,7 @@ export const ThreatFeed: React.FC<ThreatFeedProps> = ({ threats, limit = 10 }) =
         ) : (
           displayThreats.map((threat, index) => {
             const timeStr = threat.timestamp
-              ? new Date(threat.timestamp).toLocaleTimeString()
+              ? formatTime(threat.timestamp)
               : 'LIVE';
 
             return (

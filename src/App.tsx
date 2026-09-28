@@ -18,10 +18,12 @@ import { ThreatDetectionPage } from './pages/ThreatDetectionPage';
 import { SecurityLogsPage } from './pages/SecurityLogsPage';
 import { KeyManagementPage } from './pages/KeyManagementPage';
 import { DataArchivePage } from './pages/DataArchivePage';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [wsConnected, setWsConnected] = useState(wsClient.isConnected);
+  const [selectedPacketId, setSelectedPacketId] = useState<string | null>(null);
+  const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'offline'>('connecting');
   
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
@@ -40,6 +42,8 @@ export const App: React.FC = () => {
         api.getActiveKey(),
       ]);
 
+      setConnectionState('online');
+
       if (statsData) {
         setStats(statsData);
         if (statsData.stream_status) {
@@ -57,7 +61,6 @@ export const App: React.FC = () => {
           if (packetsData.length === 0 && prev.length > 0) {
             return prev;
           }
-          // Merge authoritative backend packets with any live WebSocket packets
           const map = new Map<string, Packet>();
           prev.forEach((p) => map.set(p.packet_id, p));
           packetsData.forEach((p) => map.set(p.packet_id, p));
@@ -86,7 +89,10 @@ export const App: React.FC = () => {
         setKeyMetadata(keyData);
       }
     } catch (e) {
-      console.error('Error hydrating application data:', e);
+      console.warn('Error hydrating application data from tactical backend:', e);
+      if (!wsClient.isConnected) {
+        setConnectionState('offline');
+      }
     }
   }, []);
 
@@ -94,30 +100,36 @@ export const App: React.FC = () => {
     loadInitialData();
   }, [loadInitialData]);
 
-  // Periodic polling synchronization to ensure real-time consistency
+  // Polling synchronization: fallback when offline, or low-frequency (30s) heartbeat when online
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!wsConnected || stats?.demo_state === 'RUNNING') {
+    if (connectionState === 'offline') {
+      const interval = setInterval(() => {
         loadInitialData();
-      }
-    }, wsConnected ? 4000 : 2500);
+      }, 5000);
+      return () => clearInterval(interval);
+    }
 
-    return () => clearInterval(interval);
-  }, [wsConnected, stats?.demo_state, loadInitialData]);
+    const heartbeat = setInterval(() => {
+      loadInitialData();
+    }, 30000);
+    return () => clearInterval(heartbeat);
+  }, [connectionState, loadInitialData]);
 
   // WebSocket Subscription for Real-Time Event Dispatching
   useEffect(() => {
     const unsubConn = wsClient.on('connection_change', (data) => {
-      setWsConnected(data.connected);
       if (data.connected) {
+        setConnectionState('online');
         loadInitialData();
+      } else {
+        setConnectionState('offline');
       }
     });
 
     const unsubPacket = wsClient.on('packet_processed', (newPacket: Packet) => {
       setPackets((prev) => {
-        if (prev.some(p => p.packet_id === newPacket.packet_id)) {
-          return prev.map(p => p.packet_id === newPacket.packet_id ? newPacket : p);
+        if (prev.some((p) => p.packet_id === newPacket.packet_id)) {
+          return prev.map((p) => (p.packet_id === newPacket.packet_id ? newPacket : p));
         }
         return [newPacket, ...prev.slice(0, 199)];
       });
@@ -154,13 +166,13 @@ export const App: React.FC = () => {
 
     const unsubStatus = wsClient.on('system_status_changed', (statusData: any) => {
       if (statusData.stream_status) {
-        setStats((prev) => prev ? { ...prev, stream_status: statusData.stream_status } : prev);
+        setStats((prev) => (prev ? { ...prev, stream_status: statusData.stream_status } : prev));
       }
       if (statusData.simulator_active !== undefined) {
-        setStats((prev) => prev ? { ...prev, simulator_active: statusData.simulator_active } : prev);
+        setStats((prev) => (prev ? { ...prev, simulator_active: statusData.simulator_active } : prev));
       }
       if (statusData.demo_state) {
-        setStats((prev) => prev ? { ...prev, demo_state: statusData.demo_state } : prev);
+        setStats((prev) => (prev ? { ...prev, demo_state: statusData.demo_state } : prev));
       }
     });
 
@@ -188,6 +200,19 @@ export const App: React.FC = () => {
     };
   }, [loadInitialData]);
 
+  const handleNavigate = (tab: string, packetId?: string) => {
+    setActiveTab(tab);
+    if (packetId) {
+      setSelectedPacketId(packetId);
+    }
+  };
+
+  const handleManualRetry = () => {
+    setConnectionState('connecting');
+    wsClient.connect();
+    loadInitialData();
+  };
+
   return (
     <div className="flex w-full h-full min-h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
       {/* Sidebar Navigation */}
@@ -195,17 +220,36 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         threatCount={threats.length}
+        connectionState={connectionState}
       />
 
       {/* Main Workspace */}
       <div className="flex-1 flex flex-col min-w-0 w-full h-full overflow-hidden">
         {/* Top Header */}
         <TopNav
-          wsConnected={wsConnected}
-          systemStatus={stats?.system_security_status || 'ONLINE'}
-          activeKeyId={keyMetadata?.key_id || 'SK-ALPHA-042'}
-          streamStatus={stats?.stream_status || 'ACTIVE'}
+          connectionState={connectionState}
+          systemStatus={stats?.system_security_status || (connectionState === 'online' ? 'ONLINE' : 'OFFLINE')}
+          activeKeyId={keyMetadata?.key_id || null}
+          streamStatus={stats?.stream_status || (connectionState === 'online' ? 'STANDBY' : 'STOPPED')}
         />
+
+        {/* Offline Warning Banner */}
+        {connectionState === 'offline' && (
+          <div className="bg-rose-600 text-white px-6 py-2.5 flex items-center justify-between text-xs font-semibold shadow-inner">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-white" />
+              <span>DISCONNECTED FROM TACTICAL LINK SERVER — Live stream unavailable. Attempting reconnection...</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleManualRetry}
+              className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-xs font-bold transition-colors flex items-center space-x-1 cursor-pointer"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Retry Now</span>
+            </button>
+          </div>
+        )}
 
         {/* Scrollable View Content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden w-full">
@@ -217,7 +261,7 @@ export const App: React.FC = () => {
               threats={threats}
               keyMetadata={keyMetadata}
               onRefreshData={loadInitialData}
-              onNavigate={setActiveTab}
+              onNavigate={handleNavigate}
             />
           )}
 
@@ -232,6 +276,7 @@ export const App: React.FC = () => {
             <PacketVerificationPage
               packets={packets}
               onRefreshData={loadInitialData}
+              initialPacketId={selectedPacketId}
             />
           )}
 

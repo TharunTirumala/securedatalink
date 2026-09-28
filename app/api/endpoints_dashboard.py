@@ -1,7 +1,7 @@
-import time
+import os
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, case
 from app.database.connection import get_db, get_system_state
 from app.database.models import PacketRecord
 from app.crypto.key_manager import key_manager
@@ -17,44 +17,48 @@ router = APIRouter()
 async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     """
     Returns live aggregated tactical datalink metrics from the persistent database
-    and active backend modules.
+    and active backend modules using optimized subqueries and combined aggregates.
     """
-    import os
     saved_state = await get_system_state("demo_state", None)
     if saved_state == "RUNNING" and simulator.enabled and not pipeline.stream_paused:
         is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
         if is_serverless or simulator._task is None or simulator._task.done():
             await simulator.generate_and_process_next_packet()
 
-    # Total evaluated (active buffer)
-    total_result = await db.execute(
-        select(func.count(PacketRecord.id)).where(PacketRecord.is_archived == False)
-    )
-    total_packets = total_result.scalar() or 0
+    # Single-query combined counts for active buffer
+    counts_query = select(
+        func.count(PacketRecord.id).label("total"),
+        func.sum(case((PacketRecord.action == "ACCEPTED", 1), else_=0)).label("authenticated"),
+        func.sum(case((PacketRecord.action.in_(["BLOCKED", "FILTERED", "REJECTED"]), 1), else_=0)).label("dropped")
+    ).where(PacketRecord.is_archived == False)
 
-    # Authenticated count (active buffer)
-    auth_result = await db.execute(
-        select(func.count(PacketRecord.id)).where(PacketRecord.action == "ACCEPTED", PacketRecord.is_archived == False)
-    )
-    authenticated_packets = auth_result.scalar() or 0
+    counts_result = await db.execute(counts_query)
+    row = counts_result.one()
+    total_packets = row.total or 0
+    authenticated_packets = int(row.authenticated or 0)
+    replay_filtered = int(row.dropped or 0)
 
-    # Blocked / Filtered count (active buffer)
-    blocked_result = await db.execute(
-        select(func.count(PacketRecord.id)).where(PacketRecord.action.in_(["BLOCKED", "FILTERED", "REJECTED"]), PacketRecord.is_archived == False)
+    # Average Trust Score across last 100 active packets (subquery ensures proper LIMIT evaluation)
+    subq_trust = (
+        select(PacketRecord.trust_score)
+        .where(PacketRecord.is_archived == False)
+        .order_by(desc(PacketRecord.id))
+        .limit(100)
+        .subquery()
     )
-    replay_filtered = blocked_result.scalar() or 0
-
-    # Average Trust Score across last 100 active packets
-    recent_trust_result = await db.execute(
-        select(func.avg(PacketRecord.trust_score)).where(PacketRecord.is_archived == False).order_by(desc(PacketRecord.id)).limit(100)
-    )
+    recent_trust_result = await db.execute(select(func.avg(subq_trust.c.trust_score)))
     avg_trust = recent_trust_result.scalar()
     avg_trust_score = round(float(avg_trust), 1) if avg_trust is not None else 100.0
 
-    # Average Latency across last 50 active packets
-    recent_lat_result = await db.execute(
-        select(func.avg(PacketRecord.latency_ms)).where(PacketRecord.is_archived == False).order_by(desc(PacketRecord.id)).limit(50)
+    # Average Latency across last 50 active packets (subquery ensures proper LIMIT evaluation)
+    subq_lat = (
+        select(PacketRecord.latency_ms)
+        .where(PacketRecord.is_archived == False)
+        .order_by(desc(PacketRecord.id))
+        .limit(50)
+        .subquery()
     )
+    recent_lat_result = await db.execute(select(func.avg(subq_lat.c.latency_ms)))
     avg_lat = recent_lat_result.scalar()
     avg_latency = round(float(avg_lat), 2) if avg_lat is not None else 1.25
 
@@ -71,7 +75,6 @@ async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
     else:
         system_status = "SECURE_NOMINAL"
 
-    saved_state = await get_system_state("demo_state", None)
     if saved_state:
         demo_state = saved_state
     else:

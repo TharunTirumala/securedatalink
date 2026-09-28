@@ -1,7 +1,7 @@
 import React from 'react';
 import { Packet } from '../../types/telemetry';
 import { Badge } from '../common/Badge';
-import { X, Lock, CheckCircle2, XCircle, Shield, FileCode, Radio, Cpu } from 'lucide-react';
+import { X, Shield } from 'lucide-react';
 
 interface PacketDetailModalProps {
   packet: Packet | null;

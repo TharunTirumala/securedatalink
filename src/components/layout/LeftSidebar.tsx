@@ -6,20 +6,21 @@ import {
   ShieldAlert,
   ScrollText,
   KeyRound,
-  Archive,
-  TerminalSquare
+  Archive
 } from 'lucide-react';
 
 interface LeftSidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   threatCount?: number;
+  connectionState?: 'connecting' | 'online' | 'offline';
 }
 
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   activeTab,
   setActiveTab,
-  threatCount = 0
+  threatCount = 0,
+  connectionState = 'online',
 }) => {
   const navSections = [
     {
@@ -41,6 +42,18 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     }
   ];
 
+  const engineStatusText = connectionState === 'online'
+    ? 'AES/ECDSA-OK'
+    : connectionState === 'connecting'
+    ? 'SYNCING...'
+    : 'OFFLINE';
+
+  const engineStatusColor = connectionState === 'online'
+    ? 'text-emerald-400'
+    : connectionState === 'connecting'
+    ? 'text-amber-400'
+    : 'text-rose-400';
+
   return (
     <aside className="w-64 min-w-[16rem] max-w-[16rem] h-full bg-slate-900 text-slate-300 flex flex-col flex-shrink-0 border-r border-slate-800 select-none">
       {/* Sidebar Navigation */}
@@ -57,8 +70,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 return (
                   <button
                     key={item.id}
+                    type="button"
                     onClick={() => setActiveTab(item.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+                    aria-current={isActive ? 'page' : undefined}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                       isActive
                         ? 'bg-sky-700 text-white shadow-sm'
                         : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -87,7 +102,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       <div className="p-4 border-t border-slate-800 text-xs text-slate-400 bg-slate-950/40">
         <div className="flex items-center justify-between font-mono text-[11px]">
           <span className="text-slate-500">ENGINE:</span>
-          <span className="text-emerald-400 font-semibold">AES/ECDSA-OK</span>
+          <span className={`font-semibold ${engineStatusColor}`}>{engineStatusText}</span>
         </div>
         <div className="flex items-center justify-between font-mono text-[11px] mt-1">
           <span className="text-slate-500">UDP PORT:</span>

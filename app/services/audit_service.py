@@ -4,9 +4,9 @@ import json
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.connection import async_session
 from app.database.models import SecurityLogRecord, ThreatEventRecord, OperatorActionRecord
-from app.core.logging import logger
 from app.services.ws_manager import ws_manager
 
 def sanitize_log_data(data: Any) -> Any:
@@ -22,9 +22,19 @@ def sanitize_log_data(data: Any) -> Any:
         return [sanitize_log_data(item) for item in data]
     return data
 
+def sanitize_csv_cell(val: Any) -> str:
+    """Mitigates CSV formula injection (DDE) by escaping leading formula characters."""
+    if val is None:
+        return ""
+    s = str(val)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
 class AuditService:
     """
-    Persistent audit logging and compliance export service.
+    Persistent audit logging and compliance export service with CSV formula injection mitigation
+    and zero secret exposure.
     """
     
     @staticmethod
@@ -34,38 +44,46 @@ class AuditService:
         description: str,
         source: Optional[str] = None,
         packet_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None
+        details: Optional[Dict[str, Any]] = None,
+        session: Optional[AsyncSession] = None
     ) -> SecurityLogRecord:
         clean_details = sanitize_log_data(details) if details else None
-        async with async_session() as session:
-            record = SecurityLogRecord(
-                timestamp=datetime.now(timezone.utc),
-                event_type=event_type,
-                severity=severity,
-                source=source,
-                packet_id=packet_id,
-                description=description,
-                details=clean_details
-            )
-            session.add(record)
-            await session.commit()
-            await session.refresh(record)
+        record = SecurityLogRecord(
+            timestamp=datetime.now(timezone.utc),
+            event_type=event_type,
+            severity=severity,
+            source=source,
+            packet_id=packet_id,
+            description=description,
+            details=clean_details
+        )
+
+        async def _persist(s: AsyncSession):
+            s.add(record)
+            await s.commit()
+            await s.refresh(record)
+
+        if session:
+            await _persist(session)
+        else:
+            async with async_session() as s:
+                await _persist(s)
             
-            try:
-                await ws_manager.broadcast("security_log_added", {
-                    "id": record.id,
-                    "timestamp": record.timestamp.isoformat() if record.timestamp else None,
-                    "event_type": record.event_type,
-                    "severity": record.severity,
-                    "source": record.source,
-                    "packet_id": record.packet_id,
-                    "description": record.description,
-                    "details": record.details
-                })
-            except Exception:
-                pass
-                
-            return record
+        try:
+            await ws_manager.broadcast("security_log_added", {
+                "id": record.id,
+                "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+                "event_type": record.event_type,
+                "severity": record.severity,
+                "source": record.source,
+                "packet_id": record.packet_id,
+                "description": record.description,
+                "details": record.details
+            })
+        except Exception:
+            pass
+            
+        return record
 
     @staticmethod
     async def log_threat_event(
@@ -74,51 +92,58 @@ class AuditService:
         event: str,
         severity: str,
         action: str,
-        details: Optional[Dict[str, Any]] = None
+        details: Optional[Dict[str, Any]] = None,
+        session: Optional[AsyncSession] = None
     ) -> ThreatEventRecord:
         clean_details = sanitize_log_data(details) if details else None
-        async with async_session() as session:
-            threat = ThreatEventRecord(
-                timestamp=datetime.now(timezone.utc),
-                packet_id=packet_id,
-                source=source,
-                event=event,
-                severity=severity,
-                action=action,
-                details=clean_details
-            )
-            session.add(threat)
+        now = datetime.now(timezone.utc)
+        threat = ThreatEventRecord(
+            timestamp=now,
+            packet_id=packet_id,
+            source=source,
+            event=event,
+            severity=severity,
+            action=action,
+            details=clean_details
+        )
+        audit_log = SecurityLogRecord(
+            timestamp=now,
+            event_type=f"THREAT_{action}",
+            severity=severity,
+            source=source,
+            packet_id=packet_id,
+            description=f"{event} - Action: {action}",
+            details=clean_details
+        )
+
+        async def _persist(s: AsyncSession):
+            s.add(threat)
+            s.add(audit_log)
+            await s.commit()
+            await s.refresh(threat)
+            await s.refresh(audit_log)
+
+        if session:
+            await _persist(session)
+        else:
+            async with async_session() as s:
+                await _persist(s)
+        
+        try:
+            await ws_manager.broadcast("security_log_added", {
+                "id": audit_log.id,
+                "timestamp": audit_log.timestamp.isoformat() if audit_log.timestamp else None,
+                "event_type": audit_log.event_type,
+                "severity": audit_log.severity,
+                "source": audit_log.source,
+                "packet_id": audit_log.packet_id,
+                "description": audit_log.description,
+                "details": audit_log.details
+            })
+        except Exception:
+            pass
             
-            # Also write corresponding security audit log entry
-            audit_log = SecurityLogRecord(
-                timestamp=datetime.now(timezone.utc),
-                event_type=f"THREAT_{action}",
-                severity=severity,
-                source=source,
-                packet_id=packet_id,
-                description=f"{event} - Action: {action}",
-                details=clean_details
-            )
-            session.add(audit_log)
-            await session.commit()
-            await session.refresh(threat)
-            await session.refresh(audit_log)
-            
-            try:
-                await ws_manager.broadcast("security_log_added", {
-                    "id": audit_log.id,
-                    "timestamp": audit_log.timestamp.isoformat() if audit_log.timestamp else None,
-                    "event_type": audit_log.event_type,
-                    "severity": audit_log.severity,
-                    "source": audit_log.source,
-                    "packet_id": audit_log.packet_id,
-                    "description": audit_log.description,
-                    "details": audit_log.details
-                })
-            except Exception:
-                pass
-                
-            return threat
+        return threat
 
     @staticmethod
     async def log_operator_action(
@@ -240,10 +265,9 @@ class AuditService:
             details=details
         )
 
-
     @staticmethod
     async def export_logs_csv() -> str:
-        """Generates downloadable CSV content of all security logs."""
+        """Generates downloadable CSV content of all security logs with formula injection protection."""
         async with async_session() as session:
             result = await session.execute(
                 select(SecurityLogRecord).order_by(desc(SecurityLogRecord.timestamp)).limit(1000)
@@ -255,14 +279,14 @@ class AuditService:
             writer.writerow(["ID", "Timestamp (UTC)", "Event Type", "Severity", "Source", "Packet ID", "Description", "Details"])
             for r in records:
                 writer.writerow([
-                    r.id,
-                    r.timestamp.isoformat() if r.timestamp else "",
-                    r.event_type,
-                    r.severity,
-                    r.source or "",
-                    r.packet_id or "",
-                    r.description,
-                    json.dumps(r.details) if r.details else ""
+                    sanitize_csv_cell(r.id),
+                    sanitize_csv_cell(r.timestamp.isoformat() if r.timestamp else ""),
+                    sanitize_csv_cell(r.event_type),
+                    sanitize_csv_cell(r.severity),
+                    sanitize_csv_cell(r.source or ""),
+                    sanitize_csv_cell(r.packet_id or ""),
+                    sanitize_csv_cell(r.description),
+                    sanitize_csv_cell(json.dumps(r.details) if r.details else "")
                 ])
             return output.getvalue()
 

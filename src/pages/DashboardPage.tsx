@@ -4,8 +4,7 @@ import {
   PipelineStage,
   Packet,
   ThreatEvent,
-  KeyMetadata,
-  SimulatorConfig
+  KeyMetadata
 } from '../types/telemetry';
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
@@ -24,7 +23,7 @@ interface DashboardPageProps {
   threats: ThreatEvent[];
   keyMetadata: KeyMetadata | null;
   onRefreshData: () => void;
-  onNavigate?: (tab: string) => void;
+  onNavigate?: (tab: string, packetId?: string) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -357,7 +356,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           onNavigateToLogs={() => onNavigate?.('logs')}
         />
         <TrustedC2Panel
-          status={stats?.c2_output?.status || 'CONNECTED'}
+          status={stats?.c2_output?.status || 'INTERFACE READY'}
           forwardedCount={stats?.c2_output?.forwarded ?? (stats?.adaptive_filter?.accepted || 0)}
           blockedCount={stats?.replay_filtered ?? (stats?.adaptive_filter?.blocked || 0)}
         />
@@ -367,7 +366,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       <SimplePacketDetailModal
         packet={selectedPacket}
         onClose={() => setSelectedPacket(null)}
-        onNavigateToVerification={() => onNavigate?.('verification')}
+        onNavigateToVerification={(packetId) => onNavigate?.('verification', packetId)}
       />
 
       {/* IMPORT TELEMETRY MODAL */}

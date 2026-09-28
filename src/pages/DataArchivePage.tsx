@@ -3,9 +3,9 @@ import { ProcessedFile, Packet } from '../types/telemetry';
 import { api } from '../services/api';
 import { wsClient } from '../services/websocket';
 import { Badge } from '../components/common/Badge';
-import { TelemetryTable } from '../components/telemetry/TelemetryTable';
 import { PacketDetailModal } from '../components/telemetry/PacketDetailModal';
 import { ConfirmModal } from '../components/common/ConfirmModal';
+import { formatUtc } from '../utils/formatters';
 import {
   Archive,
   FileCheck,
@@ -18,7 +18,6 @@ import {
   Database,
   Inbox,
   Clock,
-  Layers,
   Search,
   Upload
 } from 'lucide-react';
@@ -238,8 +237,8 @@ export const DataArchivePage: React.FC = () => {
           )}
 
           <a
-            href={api.getLogExportUrl('csv')}
-            download
+            href={api.getArchivedPacketsExportUrl('csv')}
+            download="archived_telemetry.csv"
             className="flex items-center space-x-1.5 px-3 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 shadow-xs"
           >
             <Download className="w-3.5 h-3.5 text-slate-500" />
@@ -323,9 +322,7 @@ export const DataArchivePage: React.FC = () => {
           </div>
           <div className="mt-1">
             <span className="text-xs font-mono font-bold text-slate-800">
-              {archiveStats.last_archived_at
-                ? new Date(archiveStats.last_archived_at).toISOString().replace('T', ' ').slice(0, 19)
-                : 'Never'}
+              {formatUtc(archiveStats.last_archived_at)}
             </span>
           </div>
           <span className="text-[10px] text-slate-400 mt-0.5 block">Atomic transaction</span>
@@ -412,7 +409,7 @@ export const DataArchivePage: React.FC = () => {
                   <th className="py-2.5 px-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-150">
+              <tbody className="divide-y divide-slate-200">
                 {filteredArchived.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-10 text-center text-slate-400">
@@ -441,9 +438,7 @@ export const DataArchivePage: React.FC = () => {
                         {(pkt as any).archive_batch_id || 'BATCH-SYS'}
                       </td>
                       <td className="py-2.5 px-3 font-mono text-slate-500 text-[11px] whitespace-nowrap">
-                        {(pkt as any).archived_at
-                          ? new Date((pkt as any).archived_at).toISOString().replace('T', ' ').slice(0, 19)
-                          : '—'}
+                        {formatUtc((pkt as any).archived_at)}
                       </td>
                       <td className="py-2.5 px-3 text-right whitespace-nowrap">
                         <button
@@ -509,7 +504,7 @@ export const DataArchivePage: React.FC = () => {
                   <th className="py-2.5 px-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-150">
+              <tbody className="divide-y divide-slate-200">
                 {filteredActive.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-10 text-center text-slate-400">
@@ -530,7 +525,7 @@ export const DataArchivePage: React.FC = () => {
                         </button>
                       </td>
                       <td className="py-2.5 px-3 font-mono text-slate-500 whitespace-nowrap">
-                        {pkt.created_at ? new Date(pkt.created_at).toISOString().replace('T', ' ').slice(0, 19) : ''}
+                        {formatUtc(pkt.created_at)}
                       </td>
                       <td className="py-2.5 px-3 font-semibold text-slate-700">{pkt.source}</td>
                       <td className="py-2.5 px-3">
@@ -646,7 +641,7 @@ export const DataArchivePage: React.FC = () => {
                   <th className="py-2.5 px-3">Processed At (UTC)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-150">
+              <tbody className="divide-y divide-slate-200">
                 {filteredFiles.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-10 text-center text-slate-400">
@@ -658,9 +653,11 @@ export const DataArchivePage: React.FC = () => {
                 ) : (
                   filteredFiles.map((f) => (
                     <tr key={f.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-semibold text-slate-800 flex items-center space-x-2">
-                        <FileCheck className="w-4 h-4 text-emerald-600" />
-                        <span>{f.filename}</span>
+                      <td className="py-2.5 px-3 font-semibold text-slate-800">
+                        <div className="flex items-center space-x-2">
+                          <FileCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>{f.filename}</span>
+                        </div>
                       </td>
                       <td className="py-2.5 px-3 font-mono font-bold text-slate-600">
                         {f.file_type}
@@ -681,7 +678,7 @@ export const DataArchivePage: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-2.5 px-3 font-mono text-slate-500">
-                        {f.processed_at ? new Date(f.processed_at).toISOString().replace('T', ' ').slice(0, 19) : ''}
+                        {formatUtc(f.processed_at)}
                       </td>
                     </tr>
                   ))

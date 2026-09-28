@@ -1,6 +1,5 @@
 from typing import Dict, Any, List
 from collections import deque
-from app.core.logging import logger
 
 class C2OutputService:
     """

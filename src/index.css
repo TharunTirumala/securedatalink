@@ -1,78 +1,46 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
-/* ==================================================
-   GLOBAL CSS RESET & NORMALIZATION (Chrome & Edge)
-   Properly scoped inside @layer base so Tailwind utilities
-   (spacing, margins, paddings, typography) are preserved.
-   ================================================== */
+@theme {
+  --color-tactical-navy: #0f172a;
+  --color-tactical-slate: #f8fafc;
+  --color-tactical-panel: #ffffff;
+  --color-tactical-border: #e2e8f0;
+  --color-tactical-blue: #0284c7;
+  --color-tactical-blue-dark: #0369a1;
+  --color-tactical-green: #10b981;
+  --color-tactical-amber: #f59e0b;
+  --color-tactical-red: #ef4444;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Segoe UI Mono', Menlo, Monaco, Consolas, monospace;
+}
 
 @layer base {
-  /* Universal Box-Sizing */
-  *, *::before, *::after {
-    box-sizing: border-box;
-  }
-
-  /* Root, HTML & Body Normalization */
-  html {
+  html, body, #root {
     width: 100%;
-    height: 100%;
     min-height: 100%;
     margin: 0;
     padding: 0;
-    -webkit-text-size-adjust: 100%;
-    text-size-adjust: 100%;
-    tab-size: 4;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
-    background-color: #f8fafc;
-    color: #0f172a;
   }
 
   body {
-    width: 100%;
-    height: 100%;
-    min-height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow-x: hidden;
-    font-family: inherit;
-    line-height: inherit;
     background-color: #f8fafc;
     color: #0f172a;
+    overflow-x: hidden;
   }
 
   #root {
-    width: 100%;
-    height: 100%;
-    min-height: 100%;
-    margin: 0;
-    padding: 0;
     display: flex;
     flex-direction: column;
   }
 
-  /* Table normalization */
-  table {
-    border-collapse: collapse;
-    border-spacing: 0;
-    width: 100%;
-  }
-
-  th, td {
-    vertical-align: middle;
-  }
-
-  /* Monospace font stack for cryptographic data & clocks */
   code, kbd, samp, pre, .font-mono {
-    font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Segoe UI Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-feature-settings: "liga" 0;
   }
 }
 
-/* Crisp light enterprise scrollbars (Chromium - Chrome & Edge) */
+/* Crisp light enterprise scrollbars (Chromium) */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

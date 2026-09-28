@@ -1,7 +1,7 @@
 import os
+import asyncio
 from contextlib import asynccontextmanager
-from pathlib import Path
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -10,12 +10,6 @@ from app.core.logging import logger
 from app.database.connection import init_db
 from app.api.router import api_router
 from app.api.websocket import router as ws_router
-from app.api.endpoints_dashboard import router as dashboard_router
-from app.api.endpoints_telemetry import router as telemetry_router
-from app.api.endpoints_threats import router as threats_router
-from app.api.endpoints_keys import router as keys_router
-from app.api.endpoints_operator import router as operator_router
-from app.api.endpoints_archive import router as archive_router
 from app.ingestion.file_watcher import file_watcher
 from app.ingestion.simulator import simulator
 from app.ingestion.udp_receiver import udp_receiver
@@ -23,11 +17,10 @@ from app.processing.pipeline import pipeline
 from app.processing.freshness import freshness_verifier
 
 _initialized = False
+_init_lock = asyncio.Lock()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _perform_system_init():
     global _initialized
-    logger.info("Initializing SecureLink Cyber-Secure Tactical Datalink System...")
     if not _initialized:
         await init_db()
         await pipeline.initialize_state()
@@ -39,6 +32,12 @@ async def lifespan(app: FastAPI):
         pipeline.stream_paused = False
         _initialized = True
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing SecureLink Cyber-Secure Tactical Datalink System...")
+    async with _init_lock:
+        await _perform_system_init()
+
     is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
     is_testing = bool(os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING"))
     if not is_serverless and not is_testing:
@@ -47,9 +46,9 @@ async def lifespan(app: FastAPI):
         logger.info("SecureLink backend services ready (STATUS: STOPPED).")
     else:
         logger.info("SecureLink running in test or serverless environment.")
-    
+
     yield
-    
+
     if not is_serverless and not is_testing:
         logger.info("Shutting down SecureLink backend services...")
         await simulator.stop()
@@ -64,53 +63,49 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Security Headers Middleware
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com data:; "
+        "connect-src 'self' ws: wss: http: https:;"
+    )
+    return response
+
 # Lazy DB & pipeline initialization middleware for serverless cold starts
 @app.middleware("http")
 async def ensure_db_initialized(request, call_next):
     global _initialized
     if not _initialized:
-        try:
-            await init_db()
-            await pipeline.initialize_state()
-            await freshness_verifier.initialize_state()
-            await simulator.sync_sequence_from_db()
-            from app.database.connection import get_system_state
-            saved_demo_state = await get_system_state("demo_state", "STOPPED")
-            if saved_demo_state == "PAUSED":
-                simulator.enabled = True
-                pipeline.stream_paused = True
-            elif saved_demo_state == "RUNNING" and simulator.enabled:
-                pipeline.stream_paused = False
-            else:
-                simulator.enabled = False
-                pipeline.stream_paused = False
-            _initialized = True
-        except Exception as e:
-            logger.error(f"Error during lazy initialization: {e}")
+        async with _init_lock:
+            if not _initialized:
+                try:
+                    await _perform_system_init()
+                except Exception as e:
+                    logger.error(f"Error during lazy initialization: {e}")
     response = await call_next(request)
     return response
 
-# CORS configuration for frontend development
+# Strict CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
-# Include API routes with both /api/v1 and /v1 prefixes for Vercel serverless compatibility
+# Include API and WebSocket routes
 app.include_router(api_router)
 app.include_router(ws_router)
-
-v1_router = APIRouter(prefix="/v1")
-v1_router.include_router(dashboard_router, prefix="/dashboard", tags=["Dashboard"])
-v1_router.include_router(telemetry_router, prefix="/telemetry", tags=["Telemetry"])
-v1_router.include_router(threats_router, prefix="/threats", tags=["Threats"])
-v1_router.include_router(keys_router, prefix="/keys", tags=["Key Management"])
-v1_router.include_router(operator_router, prefix="/operator", tags=["Operator Controls"])
-v1_router.include_router(archive_router, prefix="/archive", tags=["Archive & Logs"])
-app.include_router(v1_router)
 
 @app.get("/health")
 @app.get("/api/health")

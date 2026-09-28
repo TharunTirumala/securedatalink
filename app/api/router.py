@@ -5,7 +5,6 @@ from app.api.endpoints_threats import router as threats_router
 from app.api.endpoints_keys import router as keys_router
 from app.api.endpoints_operator import router as operator_router
 from app.api.endpoints_archive import router as archive_router
-from app.api.websocket import router as ws_router
 
 api_router = APIRouter(prefix="/api/v1")
 

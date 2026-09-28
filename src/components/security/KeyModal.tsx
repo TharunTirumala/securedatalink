@@ -1,6 +1,6 @@
 import React from 'react';
 import { KeyMetadata } from '../../types/telemetry';
-import { KeyRound, X, ShieldCheck, Lock, Clock, Info } from 'lucide-react';
+import { KeyRound, X, Lock, Info } from 'lucide-react';
 
 interface KeyModalProps {
   isOpen: boolean;

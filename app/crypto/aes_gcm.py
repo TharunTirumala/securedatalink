@@ -1,9 +1,7 @@
 import os
-import base64
 from typing import Tuple, Optional
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidTag
-from app.core.logging import logger
 
 class AESGCMProcessor:
     """

@@ -1,5 +1,5 @@
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from typing import Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -12,6 +12,7 @@ from app.services.audit_service import audit_service
 from app.services.ws_manager import ws_manager
 from app.schemas.telemetry import SimulatorConfig
 from app.core.config import settings
+from app.core.security import verify_operator_token
 
 router = APIRouter()
 
@@ -39,12 +40,16 @@ async def get_operator_status():
     }
 
 @router.post("/start")
-async def start_demo(operator_id: str = "OPERATOR-PRIMARY"):
+async def start_demo(
+    authenticated_operator: str = Depends(verify_operator_token),
+    operator_id: Optional[str] = Query(None)
+):
     """
     Starts simulated demonstration mode with fresh sequence counters.
     Authoritative state transition: STOPPED -> RUNNING.
     Protects against duplicate simulator instances.
     """
+    op = operator_id if (operator_id and operator_id in settings.AUTHORIZED_OPERATORS) else authenticated_operator
     current_state = await get_system_state("demo_state", "STOPPED")
     if current_state == "RUNNING" and simulator.enabled and not pipeline.stream_paused:
         # Already running; avoid duplicate creation
@@ -63,13 +68,13 @@ async def start_demo(operator_id: str = "OPERATOR-PRIMARY"):
     await set_system_state("demo_state", "RUNNING")
     await simulator.generate_and_process_next_packet()
     await audit_service.log_stream_state(
-        operator_id=operator_id,
+        operator_id=op,
         state="RUNNING",
         details={"status": "DEMO_STARTED"}
     )
     await audit_service.log_operator_action(
         action="DEMO_STARTED",
-        operator_id=operator_id,
+        operator_id=op,
         confirmed=True,
         details={"status": "RUNNING"}
     )
@@ -86,12 +91,16 @@ async def start_demo(operator_id: str = "OPERATOR-PRIMARY"):
     }
 
 @router.post("/stop")
-async def stop_demo(operator_id: str = "OPERATOR-PRIMARY"):
+async def stop_demo(
+    authenticated_operator: str = Depends(verify_operator_token),
+    operator_id: Optional[str] = Query(None)
+):
     """
     Stops simulated demonstration mode and resets run sequence.
     Authoritative state transition: RUNNING/PAUSED -> STOPPED.
     Preserves all previously processed history records in the database.
     """
+    op = operator_id if (operator_id and operator_id in settings.AUTHORIZED_OPERATORS) else authenticated_operator
     current_state = await get_system_state("demo_state", "STOPPED")
     simulator.set_config(enabled=False)
     await simulator.stop()
@@ -100,13 +109,13 @@ async def stop_demo(operator_id: str = "OPERATOR-PRIMARY"):
     
     if current_state != "STOPPED":
         await audit_service.log_stream_state(
-            operator_id=operator_id,
+            operator_id=op,
             state="STOPPED",
             details={"status": "DEMO_STOPPED"}
         )
         await audit_service.log_operator_action(
             action="DEMO_STOPPED",
-            operator_id=operator_id,
+            operator_id=op,
             confirmed=True,
             details={"status": "STOPPED"}
         )
@@ -124,12 +133,16 @@ async def stop_demo(operator_id: str = "OPERATOR-PRIMARY"):
     }
 
 @router.post("/pause")
-async def pause_stream(operator_id: str = "OPERATOR-PRIMARY"):
+async def pause_stream(
+    authenticated_operator: str = Depends(verify_operator_token),
+    operator_id: Optional[str] = Query(None)
+):
     """
     Pauses telemetry stream processing while preserving run state.
     Authoritative state transition: RUNNING -> PAUSED.
     Rejects invalid transitions from STOPPED.
     """
+    op = operator_id if (operator_id and operator_id in settings.AUTHORIZED_OPERATORS) else authenticated_operator
     current_state = await get_system_state("demo_state", "STOPPED")
     if current_state == "STOPPED":
         raise HTTPException(
@@ -148,13 +161,13 @@ async def pause_stream(operator_id: str = "OPERATOR-PRIMARY"):
     await pipeline.pause_stream()
     await set_system_state("demo_state", "PAUSED")
     await audit_service.log_stream_state(
-        operator_id=operator_id,
+        operator_id=op,
         state="PAUSED",
         details={"status": "PAUSED"}
     )
     await audit_service.log_operator_action(
         action="STREAM_PAUSED",
-        operator_id=operator_id,
+        operator_id=op,
         confirmed=True,
         details={"status": "PAUSED"}
     )
@@ -171,12 +184,16 @@ async def pause_stream(operator_id: str = "OPERATOR-PRIMARY"):
     }
 
 @router.post("/resume")
-async def resume_stream(operator_id: str = "OPERATOR-PRIMARY"):
+async def resume_stream(
+    authenticated_operator: str = Depends(verify_operator_token),
+    operator_id: Optional[str] = Query(None)
+):
     """
     Resumes telemetry stream processing from preserved state.
     Authoritative state transition: PAUSED -> RUNNING.
     Rejects invalid transitions from STOPPED.
     """
+    op = operator_id if (operator_id and operator_id in settings.AUTHORIZED_OPERATORS) else authenticated_operator
     current_state = await get_system_state("demo_state", "STOPPED")
     if current_state == "STOPPED":
         raise HTTPException(
@@ -197,13 +214,13 @@ async def resume_stream(operator_id: str = "OPERATOR-PRIMARY"):
     await simulator.start()
     await set_system_state("demo_state", "RUNNING")
     await audit_service.log_stream_state(
-        operator_id=operator_id,
+        operator_id=op,
         state="ACTIVE",
         details={"status": "ACTIVE"}
     )
     await audit_service.log_operator_action(
         action="STREAM_RESUMED",
-        operator_id=operator_id,
+        operator_id=op,
         confirmed=True,
         details={"status": "ACTIVE"}
     )
@@ -371,7 +388,10 @@ async def get_simulator_status():
     }
 
 @router.post("/simulator")
-async def set_simulator_status(config: SimulatorConfig):
+async def set_simulator_status(
+    config: SimulatorConfig,
+    authenticated_operator: str = Depends(verify_operator_token)
+):
     """Configures and starts/stops Simulated Demonstration Mode."""
     simulator.set_config(
         enabled=config.enabled,

@@ -1,7 +1,8 @@
 import React from 'react';
 import { Packet } from '../../types/telemetry';
 import { Badge } from '../common/Badge';
-import { ExternalLink, Radio, ArrowUpRight } from 'lucide-react';
+import { Radio } from 'lucide-react';
+import { formatTime } from '../../utils/formatters';
 
 interface TelemetryTableProps {
   packets: Packet[];
@@ -46,7 +47,7 @@ export const TelemetryTable: React.FC<TelemetryTableProps> = ({
               <th className="py-2.5 px-3 text-right">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-150">
+          <tbody className="divide-y divide-slate-200">
             {displayPackets.length === 0 ? (
               <tr>
                 <td colSpan={10} className="py-8 text-center text-slate-400">
@@ -55,7 +56,7 @@ export const TelemetryTable: React.FC<TelemetryTableProps> = ({
               </tr>
             ) : (
               displayPackets.map((pkt) => {
-                const timeStr = new Date(pkt.timestamp * 1000).toTimeString().slice(0, 8);
+                const timeStr = formatTime(pkt.timestamp);
                 const isThreat = pkt.action === 'BLOCKED';
 
                 return (

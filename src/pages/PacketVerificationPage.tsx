@@ -2,26 +2,33 @@ import React, { useState } from 'react';
 import { Packet } from '../types/telemetry';
 import { Badge } from '../components/common/Badge';
 import {
-  FileCheck2,
   Lock,
   Clock,
   Key,
   ShieldCheck,
-  CheckCircle2,
-  XCircle,
   Hash,
-  Binary,
   RefreshCw
 } from 'lucide-react';
 
 interface PacketVerificationPageProps {
   packets: Packet[];
   onRefreshData?: () => void;
+  initialPacketId?: string | null;
 }
 
-export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ packets, onRefreshData }) => {
-  const [selectedIdx, setSelectedIdx] = useState(0);
+export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({
+  packets,
+  onRefreshData,
+  initialPacketId
+}) => {
+  const [selectedPacketId, setSelectedPacketId] = useState<string | null>(initialPacketId || null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  React.useEffect(() => {
+    if (initialPacketId) {
+      setSelectedPacketId(initialPacketId);
+    }
+  }, [initialPacketId]);
 
   const handleRefresh = async () => {
     if (onRefreshData) {
@@ -34,7 +41,7 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
     }
   };
 
-  const activePacket = packets[selectedIdx] || packets[0];
+  const activePacket = (selectedPacketId ? packets.find(p => p.packet_id === selectedPacketId) : null) || packets[0];
 
   const totalEvaluated = packets.length;
   const acceptedCount = packets.filter(p => p.action === 'ACCEPTED').length;
@@ -110,14 +117,16 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
               Select Packet to Inspect ({packets.length})
             </h3>
             <div className="divide-y divide-slate-100 overflow-y-auto flex-1">
-              {packets.slice(0, 50).map((pkt, idx) => (
-                <button
-                  key={pkt.packet_id + idx}
-                  onClick={() => setSelectedIdx(idx)}
-                  className={`w-full text-left p-3 rounded-md transition-colors flex items-center justify-between ${
-                    idx === selectedIdx ? 'bg-sky-50 border border-sky-200' : 'hover:bg-slate-50'
-                  }`}
-                >
+              {packets.slice(0, 50).map((pkt) => {
+                const isSelected = activePacket?.packet_id === pkt.packet_id;
+                return (
+                  <button
+                    key={pkt.packet_id}
+                    onClick={() => setSelectedPacketId(pkt.packet_id)}
+                    className={`w-full text-left p-3 rounded-md transition-colors flex items-center justify-between cursor-pointer ${
+                      isSelected ? 'bg-sky-50 border border-sky-200' : 'hover:bg-slate-50'
+                    }`}
+                  >
                   <div>
                     <div className="flex items-center space-x-1.5">
                       <span className="font-mono font-bold text-xs text-slate-900">{pkt.packet_id}</span>
@@ -148,7 +157,8 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
                     </div>
                   </div>
                 </button>
-              ))}
+              );
+            })}
             </div>
           </div>
 

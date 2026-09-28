@@ -3,7 +3,8 @@ import { KeyMetadata } from '../types/telemetry';
 import { api } from '../services/api';
 import { KeyModal } from '../components/security/KeyModal';
 import { ConfirmModal } from '../components/common/ConfirmModal';
-import { KeyRound, Lock, RefreshCw, ShieldCheck, Clock, CheckCircle2, Shield } from 'lucide-react';
+import { Lock, RefreshCw, ShieldCheck } from 'lucide-react';
+import { formatUtc } from '../utils/formatters';
 
 interface KeyManagementPageProps {
   keyMetadata: KeyMetadata | null;
@@ -120,13 +121,13 @@ export const KeyManagementPage: React.FC<KeyManagementPageProps> = ({
           <div>
             <span className="text-slate-500 font-medium">Last Cryptographic Synchronization:</span>
             <div className="font-mono text-slate-800 font-semibold mt-0.5">
-              {keyMetadata?.last_sync ? new Date(keyMetadata.last_sync).toLocaleString() : 'Just now'}
+              {keyMetadata?.last_sync ? formatUtc(keyMetadata.last_sync) : 'Just now'}
             </div>
           </div>
           <div>
             <span className="text-slate-500 font-medium">Session Key Creation Time:</span>
             <div className="font-mono text-slate-800 font-semibold mt-0.5">
-              {keyMetadata?.created_at ? new Date(keyMetadata.created_at).toLocaleString() : 'Just now'}
+              {keyMetadata?.created_at ? formatUtc(keyMetadata.created_at) : 'Just now'}
             </div>
           </div>
         </div>

@@ -4,7 +4,7 @@ import json
 import time
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, Response, HTTPException, UploadFile, File
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
 from app.core.config import settings
@@ -539,6 +539,66 @@ async def archive_packets(req: ArchiveRequest, db: AsyncSession = Depends(get_db
         "archived_count": len(unarchived),
         "archived_packet_ids": archived_ids
     }
+
+@router.get("/packets/export")
+async def export_archived_packets(
+    format: str = Query("csv", pattern="^(csv|json)$"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Exports archived telemetry packets as a downloadable CSV or JSON file.
+    """
+    import csv, io
+    from app.services.audit_service import sanitize_csv_cell
+    result = await db.execute(
+        select(PacketRecord).where(PacketRecord.is_archived == True).order_by(desc(PacketRecord.archived_at)).limit(5000)
+    )
+    records = result.scalars().all()
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["ID", "Packet ID", "Sequence", "Source", "Timestamp", "Packet Type", "Key ID", "Classification", "Trust Score", "Action", "Archived At", "Archived By", "Batch ID"])
+        for p in records:
+            writer.writerow([
+                sanitize_csv_cell(p.id),
+                sanitize_csv_cell(p.packet_id),
+                sanitize_csv_cell(p.sequence_num),
+                sanitize_csv_cell(p.source),
+                sanitize_csv_cell(p.timestamp),
+                sanitize_csv_cell(p.packet_type),
+                sanitize_csv_cell(p.key_id),
+                sanitize_csv_cell(p.classification),
+                sanitize_csv_cell(p.trust_score),
+                sanitize_csv_cell(p.action),
+                sanitize_csv_cell(p.archived_at.isoformat() if p.archived_at else ""),
+                sanitize_csv_cell(p.archived_by or ""),
+                sanitize_csv_cell(p.archive_batch_id or "")
+            ])
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=archived_telemetry_packets.csv"}
+        )
+    else:
+        return [
+            {
+                "id": p.id,
+                "packet_id": p.packet_id,
+                "sequence_num": p.sequence_num,
+                "source": p.source,
+                "timestamp": p.timestamp,
+                "packet_type": p.packet_type,
+                "key_id": p.key_id,
+                "classification": p.classification,
+                "trust_score": p.trust_score,
+                "action": p.action,
+                "decrypted_payload": p.decrypted_payload,
+                "archived_at": p.archived_at.isoformat() if p.archived_at else None,
+                "archived_by": p.archived_by,
+                "archive_batch_id": p.archive_batch_id
+            }
+            for p in records
+        ]
 
 @router.get("/packets")
 async def get_archived_packets(

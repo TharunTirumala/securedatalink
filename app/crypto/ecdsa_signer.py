@@ -4,7 +4,6 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.exceptions import InvalidSignature
-from app.core.logging import logger
 
 class ECDSAProcessor:
     """

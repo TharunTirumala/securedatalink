@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ThreatEvent } from '../types/telemetry';
 import { ThreatFeed } from '../components/security/ThreatFeed';
 import { StatCard } from '../components/common/StatCard';
-import { ShieldAlert, AlertTriangle, ShieldX, RefreshCw } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, ShieldX } from 'lucide-react';
 
 interface ThreatDetectionPageProps {
   threats: ThreatEvent[];
@@ -17,7 +17,6 @@ export const ThreatDetectionPage: React.FC<ThreatDetectionPageProps> = ({ threat
   });
 
   const criticalCount = threats.filter((t) => t.severity === 'CRITICAL').length;
-  const highCount = threats.filter((t) => t.severity === 'HIGH' || t.severity === 'WARNING').length;
   const blockedCount = threats.filter((t) => t.action === 'BLOCKED').length;
 
   return (
