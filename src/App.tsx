@@ -59,16 +59,22 @@ export const App: React.FC = () => {
           }
           // Merge authoritative backend packets with any live WebSocket packets
           const map = new Map<string, Packet>();
+          prev.forEach((p) => map.set(p.packet_id, p));
           packetsData.forEach((p) => map.set(p.packet_id, p));
-          prev.forEach((p) => {
-            if (!map.has(p.packet_id)) {
-              map.set(p.packet_id, p);
-            }
-          });
           const merged = Array.from(map.values()).sort((a, b) => {
+            const idA = a.id ?? 0;
+            const idB = b.id ?? 0;
+            if (idA !== 0 && idB !== 0 && idA !== idB) {
+              return idB - idA;
+            }
             const timeA = a.timestamp || 0;
             const timeB = b.timestamp || 0;
-            return timeB - timeA;
+            if (timeB !== timeA) {
+              return timeB - timeA;
+            }
+            const seqA = a.sequence_num || 0;
+            const seqB = b.sequence_num || 0;
+            return seqB - seqA;
           });
           return merged.slice(0, 200);
         });

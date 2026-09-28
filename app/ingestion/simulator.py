@@ -77,7 +77,7 @@ class TelemetrySimulator:
         source = random.choice(self.sources)
         self._sequence_counters[source] += 1
         sequence_num = self._sequence_counters[source]
-        now = time.time()
+        now = round(time.time(), 3)
         packet_id = f"PKT-{sequence_num}"
         active_key_id = key_manager.active_key_id
         active_key = key_manager.get_key_bytes()

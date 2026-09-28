@@ -131,7 +131,7 @@ def normalize_and_seal_telemetry(raw_item: Dict[str, Any], sequence_offset: int 
     packet_id = f"PKT-IMP-{seq}"
     active_key = key_manager.get_key_bytes()
     active_key_id = key_manager.active_key_id
-    pkt_timestamp = time.time()
+    pkt_timestamp = round(time.time(), 3)
 
     telemetry_payload = {
         "latitude": round(latitude, 6),
