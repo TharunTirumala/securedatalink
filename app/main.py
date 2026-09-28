@@ -33,26 +33,18 @@ async def lifespan(app: FastAPI):
         await pipeline.initialize_state()
         await freshness_verifier.initialize_state()
         await simulator.sync_sequence_from_db()
-        from app.database.connection import get_system_state
-        saved_demo_state = await get_system_state("demo_state", "STOPPED")
-        if saved_demo_state == "RUNNING":
-            simulator.enabled = True
-            pipeline.stream_paused = False
-        elif saved_demo_state == "PAUSED":
-            simulator.enabled = True
-            pipeline.stream_paused = True
-        else:
-            simulator.enabled = False
-            pipeline.stream_paused = False
+        from app.database.connection import set_system_state
+        await set_system_state("demo_state", "STOPPED")
+        simulator.enabled = False
+        pipeline.stream_paused = False
         _initialized = True
 
     is_serverless = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
     is_testing = bool(os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING"))
     if not is_serverless and not is_testing:
         await file_watcher.start()
-        await simulator.start()
         await udp_receiver.start()
-        logger.info("SecureLink backend services started successfully.")
+        logger.info("SecureLink backend services ready (STATUS: STOPPED).")
     else:
         logger.info("SecureLink running in test or serverless environment.")
     
@@ -84,12 +76,11 @@ async def ensure_db_initialized(request, call_next):
             await simulator.sync_sequence_from_db()
             from app.database.connection import get_system_state
             saved_demo_state = await get_system_state("demo_state", "STOPPED")
-            if saved_demo_state == "RUNNING":
-                simulator.enabled = True
-                pipeline.stream_paused = False
-            elif saved_demo_state == "PAUSED":
+            if saved_demo_state == "PAUSED":
                 simulator.enabled = True
                 pipeline.stream_paused = True
+            elif saved_demo_state == "RUNNING" and simulator.enabled:
+                pipeline.stream_paused = False
             else:
                 simulator.enabled = False
                 pipeline.stream_paused = False

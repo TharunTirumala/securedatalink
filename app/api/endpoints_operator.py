@@ -93,6 +93,7 @@ async def stop_demo(operator_id: str = "OPERATOR-PRIMARY"):
     """
     current_state = await get_system_state("demo_state", "STOPPED")
     simulator.set_config(enabled=False)
+    await simulator.stop()
     simulator.reset_run()
     await set_system_state("demo_state", "STOPPED")
     
