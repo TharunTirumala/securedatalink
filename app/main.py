@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
         await init_db()
         await pipeline.initialize_state()
         await freshness_verifier.initialize_state()
+        await simulator.sync_sequence_from_db()
         from app.database.connection import get_system_state
         saved_demo_state = await get_system_state("demo_state", "STOPPED")
         if saved_demo_state == "RUNNING":
@@ -80,6 +81,7 @@ async def ensure_db_initialized(request, call_next):
             await init_db()
             await pipeline.initialize_state()
             await freshness_verifier.initialize_state()
+            await simulator.sync_sequence_from_db()
             from app.database.connection import get_system_state
             saved_demo_state = await get_system_state("demo_state", "STOPPED")
             if saved_demo_state == "RUNNING":

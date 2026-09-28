@@ -8,14 +8,6 @@ import {
   SimulatorConfig,
   ProcessedFile
 } from '../types/telemetry';
-import {
-  INITIAL_STATS,
-  INITIAL_STAGES,
-  INITIAL_PACKETS,
-  INITIAL_THREATS,
-  INITIAL_KEY,
-  INITIAL_LOGS
-} from './mockData';
 
 const getApiBase = () => {
   if (import.meta.env.VITE_API_URL) {

@@ -127,8 +127,17 @@ def normalize_and_seal_telemetry(raw_item: Dict[str, Any], sequence_offset: int 
 
     # Build and seal fresh packet frame
     now_ms = int(time.time() * 1000)
-    seq = (now_ms % 1000000) + sequence_offset
-    packet_id = f"PKT-IMP-{seq}"
+    custom_seq = raw_item.get("sequence_num") or raw_item.get("seq")
+    if custom_seq is not None:
+        try:
+            seq = int(custom_seq)
+        except (ValueError, TypeError):
+            seq = (now_ms % 1000000) + sequence_offset
+    else:
+        seq = (now_ms % 1000000) + sequence_offset
+
+    custom_id = raw_item.get("packet_id") or raw_item.get("packetId") or raw_item.get("packet_num")
+    packet_id = str(custom_id).strip() if custom_id else f"PKT-IMP-{seq}"
     active_key = key_manager.get_key_bytes()
     active_key_id = key_manager.active_key_id
     pkt_timestamp = round(time.time(), 3)

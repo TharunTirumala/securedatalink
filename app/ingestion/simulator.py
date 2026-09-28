@@ -26,8 +26,25 @@ class TelemetrySimulator:
         self.attack_ratio = settings.DEMO_DEFAULT_ATTACK_RATIO
         self.sources = ["UAV-ALPHA-01", "UAV-BRAVO-02", "UGV-SIERRA-03", "BASE-RELAY-04"]
         self._task: asyncio.Task = None
-        self._sequence_counters: Dict[str, int] = {s: 1880 for s in self.sources}
+        self._current_sequence: int = 1880
         self._history_nonces: List[Dict[str, Any]] = []
+        self._initialized_seq: bool = False
+
+    async def sync_sequence_from_db(self):
+        """Synchronizes sequence counter with the highest sequence number in the persistent database."""
+        try:
+            from app.database.connection import async_session
+            from app.database.models import PacketRecord
+            from sqlalchemy import select, func
+            async with async_session() as session:
+                res = await session.execute(select(func.max(PacketRecord.sequence_num)))
+                max_seq = res.scalar()
+                if max_seq is not None and max_seq >= self._current_sequence:
+                    self._current_sequence = max_seq
+                self._initialized_seq = True
+                logger.info(f"Simulator: Sequence synchronized to {self._current_sequence}")
+        except Exception as e:
+            logger.warning(f"Note syncing simulator sequence from DB: {e}")
 
     def set_config(self, enabled: bool, rate_hz: float = 1.0, attack_ratio: float = 0.25, sources: List[str] = None):
         self.enabled = enabled
@@ -38,12 +55,13 @@ class TelemetrySimulator:
         logger.info(f"Simulator config updated: enabled={self.enabled}, rate={self.rate_hz}Hz, attack_ratio={self.attack_ratio}")
 
     def reset_run(self):
-        """Resets sequence counters and history nonces for a fresh demonstration run."""
-        self._sequence_counters = {s: 1880 for s in self.sources}
+        """Resets history nonces for a fresh demonstration run while preserving sequence monotonicity."""
         self._history_nonces = []
-        logger.info("Simulator: Run counters and history reset for fresh run.")
+        logger.info("Simulator: Nonce history reset for fresh run.")
 
     async def start(self):
+        if not self._initialized_seq:
+            await self.sync_sequence_from_db()
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run_loop())
             logger.info("Telemetry Simulator background worker started.")
@@ -75,8 +93,8 @@ class TelemetrySimulator:
 
     def _generate_packet(self) -> Dict[str, Any]:
         source = random.choice(self.sources)
-        self._sequence_counters[source] += 1
-        sequence_num = self._sequence_counters[source]
+        self._current_sequence += 1
+        sequence_num = self._current_sequence
         now = round(time.time(), 3)
         packet_id = f"PKT-{sequence_num}"
         active_key_id = key_manager.active_key_id

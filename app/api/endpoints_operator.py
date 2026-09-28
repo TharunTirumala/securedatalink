@@ -55,6 +55,7 @@ async def start_demo(operator_id: str = "OPERATOR-PRIMARY"):
             "message": "Telemetry demonstration already running"
         }
 
+    await simulator.sync_sequence_from_db()
     simulator.reset_run()
     simulator.set_config(enabled=True)
     await pipeline.resume_stream()
