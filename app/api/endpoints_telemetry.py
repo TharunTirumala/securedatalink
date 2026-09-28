@@ -177,7 +177,7 @@ def normalize_and_seal_telemetry(raw_item: Dict[str, Any], sequence_offset: int 
 
 @router.get("/packets")
 async def get_packets(
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     source: Optional[str] = None,
     classification: Optional[str] = None,
@@ -225,6 +225,7 @@ async def get_packets(
             "trust_score": p.trust_score,
             "trust_details": p.trust_details,
             "action": p.action,
+            "reason": p.reason or ("Cryptographically authenticated & verified" if p.action == "ACCEPTED" else f"Security check: {p.classification}"),
             "latency_ms": p.latency_ms,
             "decrypted_payload": p.decrypted_payload,
             "simulated": p.simulated,
@@ -268,6 +269,7 @@ async def get_packet_details(packet_id: str, db: AsyncSession = Depends(get_db))
         "trust_score": p.trust_score,
         "trust_details": p.trust_details,
         "action": p.action,
+        "reason": p.reason or ("Cryptographically authenticated & verified" if p.action == "ACCEPTED" else f"Security check: {p.classification}"),
         "latency_ms": p.latency_ms,
         "decrypted_payload": p.decrypted_payload,
         "simulated": p.simulated,

@@ -30,6 +30,8 @@ async def init_db():
             try:
                 cursor.execute("PRAGMA table_info(packets)")
                 columns = [row[1] for row in cursor.fetchall()]
+                if "reason" not in columns:
+                    cursor.execute("ALTER TABLE packets ADD COLUMN reason VARCHAR(256)")
                 if "is_archived" not in columns:
                     cursor.execute("ALTER TABLE packets ADD COLUMN is_archived BOOLEAN DEFAULT 0")
                 if "archived_at" not in columns:

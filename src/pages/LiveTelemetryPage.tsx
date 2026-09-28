@@ -2,18 +2,31 @@ import React, { useState } from 'react';
 import { Packet } from '../types/telemetry';
 import { TelemetryTable } from '../components/telemetry/TelemetryTable';
 import { PacketDetailModal } from '../components/telemetry/PacketDetailModal';
-import { Search, Filter, Radio, Download } from 'lucide-react';
+import { Search, Filter, Radio, Download, RefreshCw } from 'lucide-react';
 
 interface LiveTelemetryPageProps {
   packets: Packet[];
+  onRefreshData?: () => void;
 }
 
-export const LiveTelemetryPage: React.FC<LiveTelemetryPageProps> = ({ packets }) => {
+export const LiveTelemetryPage: React.FC<LiveTelemetryPageProps> = ({ packets, onRefreshData }) => {
   const [selectedPacket, setSelectedPacket] = useState<Packet | null>(null);
   const [filterSource, setFilterSource] = useState('ALL');
   const [filterClassification, setFilterClassification] = useState('ALL');
   const [filterAction, setFilterAction] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    if (onRefreshData) {
+      setIsRefreshing(true);
+      try {
+        await onRefreshData();
+      } finally {
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
+    }
+  };
 
   const sources = Array.from(new Set(packets.map((p) => p.source)));
 
@@ -42,9 +55,22 @@ export const LiveTelemetryPage: React.FC<LiveTelemetryPageProps> = ({ packets })
             Real-time multi-source datalink stream inspection and cryptographic audit
           </p>
         </div>
-        <div className="flex items-center space-x-2 text-xs">
-          <span className="font-mono text-slate-500">Buffer:</span>
-          <span className="font-mono font-bold text-slate-800">{packets.length} packets loaded</span>
+        <div className="flex items-center space-x-3 text-xs">
+          <div className="flex items-center space-x-2">
+            <span className="font-mono text-slate-500">Buffer:</span>
+            <span className="font-mono font-bold text-slate-800">{packets.length} packets loaded</span>
+          </div>
+          {onRefreshData && (
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              title="Synchronize buffer with backend database"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>REFRESH</span>
+            </button>
+          )}
         </div>
       </div>
 

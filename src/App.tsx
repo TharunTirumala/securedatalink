@@ -33,11 +33,11 @@ export const App: React.FC = () => {
   const loadInitialData = useCallback(async () => {
     try {
       const [statsData, pipelineData, packetsData, threatsData, keyData] = await Promise.all([
-        api.getStats().catch(() => null),
-        api.getPipeline().catch(() => ({ stages: [] })),
-        api.getPackets({ limit: 50 }).catch(() => []),
-        api.getThreats({ limit: 30 }).catch(() => []),
-        api.getActiveKey().catch(() => null),
+        api.getStats(),
+        api.getPipeline(),
+        api.getPackets({ limit: 100 }),
+        api.getThreats({ limit: 50 }),
+        api.getActiveKey(),
       ]);
 
       if (statsData) {
@@ -46,10 +46,39 @@ export const App: React.FC = () => {
           wsClient.setPaused(statsData.stream_status === 'PAUSED');
         }
       }
-      if (pipelineData) setPipelineStages(pipelineData.stages);
-      if (packetsData) setPackets(packetsData);
-      if (threatsData) setThreats(threatsData);
-      if (keyData) setKeyMetadata(keyData);
+      if (pipelineData && pipelineData.stages) {
+        setPipelineStages(pipelineData.stages);
+      }
+      if (packetsData && Array.isArray(packetsData)) {
+        setPackets((prev) => {
+          if (packetsData.length === 0 && (!statsData || statsData.total_packets === 0)) {
+            return [];
+          }
+          if (packetsData.length === 0 && prev.length > 0) {
+            return prev;
+          }
+          // Merge authoritative backend packets with any live WebSocket packets
+          const map = new Map<string, Packet>();
+          packetsData.forEach((p) => map.set(p.packet_id, p));
+          prev.forEach((p) => {
+            if (!map.has(p.packet_id)) {
+              map.set(p.packet_id, p);
+            }
+          });
+          const merged = Array.from(map.values()).sort((a, b) => {
+            const timeA = a.timestamp || 0;
+            const timeB = b.timestamp || 0;
+            return timeB - timeA;
+          });
+          return merged.slice(0, 200);
+        });
+      }
+      if (threatsData && Array.isArray(threatsData)) {
+        setThreats(threatsData);
+      }
+      if (keyData) {
+        setKeyMetadata(keyData);
+      }
     } catch (e) {
       console.error('Error hydrating application data:', e);
     }
@@ -59,7 +88,7 @@ export const App: React.FC = () => {
     loadInitialData();
   }, [loadInitialData]);
 
-  // Periodic polling synchronization for cloud/serverless environments without WebSocket
+  // Periodic polling synchronization to ensure real-time consistency
   useEffect(() => {
     const interval = setInterval(() => {
       if (!wsConnected || stats?.demo_state === 'RUNNING') {
@@ -75,19 +104,23 @@ export const App: React.FC = () => {
     const unsubConn = wsClient.on('connection_change', (data) => {
       setWsConnected(data.connected);
       if (data.connected) {
-        // Re-sync on reconnect
         loadInitialData();
       }
     });
 
     const unsubPacket = wsClient.on('packet_processed', (newPacket: Packet) => {
-      setPackets((prev) => [newPacket, ...prev.slice(0, 199)]);
-      // Update quick counters
+      setPackets((prev) => {
+        if (prev.some(p => p.packet_id === newPacket.packet_id)) {
+          return prev.map(p => p.packet_id === newPacket.packet_id ? newPacket : p);
+        }
+        return [newPacket, ...prev.slice(0, 199)];
+      });
+      // Update stats totals
       setStats((prev) => {
         if (!prev) return prev;
         const isAuth = newPacket.action === 'ACCEPTED';
         const isDrop = newPacket.action === 'BLOCKED' || newPacket.action === 'REJECTED' || newPacket.action === 'FILTERED';
-        const prevTotal = prev.total_packets ?? (prev.authenticated_packets + prev.replay_filtered);
+        const prevTotal = prev.total_packets ?? 0;
         return {
           ...prev,
           total_packets: prevTotal + 1,
@@ -129,6 +162,14 @@ export const App: React.FC = () => {
       loadInitialData();
     });
 
+    const unsubArchived = wsClient.on('data_archived', () => {
+      loadInitialData();
+    });
+
+    const unsubRestored = wsClient.on('data_restored', () => {
+      loadInitialData();
+    });
+
     return () => {
       unsubConn();
       unsubPacket();
@@ -136,6 +177,8 @@ export const App: React.FC = () => {
       unsubKey();
       unsubStatus();
       unsubFile();
+      unsubArchived();
+      unsubRestored();
     };
   }, [loadInitialData]);
 
@@ -173,11 +216,17 @@ export const App: React.FC = () => {
           )}
 
           {activeTab === 'telemetry' && (
-            <LiveTelemetryPage packets={packets} />
+            <LiveTelemetryPage
+              packets={packets}
+              onRefreshData={loadInitialData}
+            />
           )}
 
           {activeTab === 'verification' && (
-            <PacketVerificationPage packets={packets} />
+            <PacketVerificationPage
+              packets={packets}
+              onRefreshData={loadInitialData}
+            />
           )}
 
           {activeTab === 'threats' && (

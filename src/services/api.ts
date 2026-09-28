@@ -31,26 +31,28 @@ const API_BASE = getApiBase();
 
 export const api = {
   // Dashboard & Pipeline
-  async getStats(): Promise<DashboardStats> {
+  async getStats(): Promise<DashboardStats | null> {
     try {
       const res = await fetch(`${API_BASE}/dashboard/stats`);
       if (res.ok) return await res.json();
     } catch (e) {
-      // Fallback for Vercel/cloud demo mode when standalone
+      console.warn('getStats network/API call failed:', e);
     }
-    return INITIAL_STATS;
+    return null;
   },
 
-  async getPipeline(): Promise<{ stages: PipelineStage[] }> {
+  async getPipeline(): Promise<{ stages: PipelineStage[] } | null> {
     try {
       const res = await fetch(`${API_BASE}/dashboard/pipeline`);
       if (res.ok) return await res.json();
-    } catch (e) {}
-    return { stages: INITIAL_STAGES };
+    } catch (e) {
+      console.warn('getPipeline network/API call failed:', e);
+    }
+    return null;
   },
 
   // Telemetry
-  async getPackets(params: { limit?: number; offset?: number; source?: string; classification?: string; action?: string } = {}): Promise<Packet[]> {
+  async getPackets(params: { limit?: number; offset?: number; source?: string; classification?: string; action?: string } = {}): Promise<Packet[] | null> {
     try {
       const query = new URLSearchParams();
       if (params.limit) query.set('limit', params.limit.toString());
@@ -61,15 +63,19 @@ export const api = {
 
       const res = await fetch(`${API_BASE}/telemetry/packets?${query.toString()}`);
       if (res.ok) return await res.json();
-    } catch (e) {}
-    return [];
+    } catch (e) {
+      console.warn('getPackets network/API call failed:', e);
+    }
+    return null;
   },
 
   async getPacketDetails(packetId: string): Promise<Packet | null> {
     try {
       const res = await fetch(`${API_BASE}/telemetry/packets/${encodeURIComponent(packetId)}`);
       if (res.ok) return await res.json();
-    } catch (e) {}
+    } catch (e) {
+      console.warn('getPacketDetails network/API call failed:', e);
+    }
     return null;
   },
 
@@ -141,7 +147,7 @@ export const api = {
   },
 
   // Threat Detection
-  async getThreats(params: { limit?: number; severity?: string; action?: string } = {}): Promise<ThreatEvent[]> {
+  async getThreats(params: { limit?: number; severity?: string; action?: string } = {}): Promise<ThreatEvent[] | null> {
     try {
       const query = new URLSearchParams();
       if (params.limit) query.set('limit', params.limit.toString());
@@ -150,17 +156,21 @@ export const api = {
 
       const res = await fetch(`${API_BASE}/threats?${query.toString()}`);
       if (res.ok) return await res.json();
-    } catch (e) {}
-    return [];
+    } catch (e) {
+      console.warn('getThreats network/API call failed:', e);
+    }
+    return null;
   },
 
   // Key Management
-  async getActiveKey(): Promise<KeyMetadata> {
+  async getActiveKey(): Promise<KeyMetadata | null> {
     try {
       const res = await fetch(`${API_BASE}/keys/active`);
       if (res.ok) return await res.json();
-    } catch (e) {}
-    return INITIAL_KEY;
+    } catch (e) {
+      console.warn('getActiveKey network/API call failed:', e);
+    }
+    return null;
   },
 
   async resyncKey(operatorId: string = 'OPERATOR-PRIMARY'): Promise<KeyMetadata> {

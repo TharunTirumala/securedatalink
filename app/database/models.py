@@ -35,6 +35,7 @@ class PacketRecord(Base):
     trust_score = Column(Integer)                   # 0 - 100
     trust_details = Column(JSON, nullable=True)     # breakdown of checks
     action = Column(String(32), index=True)         # ACCEPTED, BLOCKED, REJECTED, FILTERED
+    reason = Column(String(256), nullable=True)     # Cryptographic evaluation decision reason
     latency_ms = Column(Float, default=0.0)
     simulated = Column(Boolean, default=False)
     created_at = Column(DateTime, default=utcnow, index=True)

@@ -72,7 +72,7 @@ export const DataArchivePage: React.FC = () => {
         setArchivedPackets(pkts);
       } else if (activeTab === 'active') {
         const pkts = await api.getPackets({ limit: 100 });
-        setActivePackets(pkts);
+        if (pkts) setActivePackets(pkts);
       } else if (activeTab === 'files') {
         const fileList = await api.getProcessedFiles();
         setFiles(fileList);

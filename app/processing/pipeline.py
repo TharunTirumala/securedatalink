@@ -317,12 +317,15 @@ class TacticalProcessingPipeline:
                     trust_score=trust_score,
                     trust_details=trust_result,
                     action=action,
+                    reason=reason,
                     latency_ms=latency_ms,
                     simulated=simulated,
                     created_at=created_at_dt
                 )
                 session.add(record)
                 await session.commit()
+                await session.refresh(record)
+                result_dict["id"] = record.id
         except Exception as e:
             logger.error(f"Failed to persist packet {packet_id} to DB: {e}")
 

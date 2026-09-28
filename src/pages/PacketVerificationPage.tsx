@@ -10,15 +10,29 @@ import {
   CheckCircle2,
   XCircle,
   Hash,
-  Binary
+  Binary,
+  RefreshCw
 } from 'lucide-react';
 
 interface PacketVerificationPageProps {
   packets: Packet[];
+  onRefreshData?: () => void;
 }
 
-export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ packets }) => {
+export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ packets, onRefreshData }) => {
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    if (onRefreshData) {
+      setIsRefreshing(true);
+      try {
+        await onRefreshData();
+      } finally {
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
+    }
+  };
 
   const activePacket = packets[selectedIdx] || packets[0];
 
@@ -41,6 +55,17 @@ export const PacketVerificationPage: React.FC<PacketVerificationPageProps> = ({ 
             Step-by-step cryptographic verification: Nonce freshness, AES-256-GCM, ECDSA P-256, and SHA-256 digest
           </p>
         </div>
+        {onRefreshData && (
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-md bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 shadow-xs transition-colors cursor-pointer disabled:opacity-50 self-start sm:self-auto"
+            title="Synchronize packet verification list with backend"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>REFRESH</span>
+          </button>
+        )}
       </div>
 
       {/* 4 Summary Verification Metrics */}
