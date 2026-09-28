@@ -3,17 +3,20 @@ import { Packet } from '../../types/telemetry';
 
 interface RealTimeTelemetryFeedProps {
   packets: Packet[];
+  totalProcessed?: number;
   simulatorActive: boolean;
   onSelectPacket: (packet: Packet) => void;
 }
 
 export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
   packets,
+  totalProcessed,
   simulatorActive,
   onSelectPacket
 }) => {
   // STRICT REQUIREMENT: Keep only the latest 10 packets, newest at the top
   const latestTen = packets.slice(0, 10);
+  const totalCount = totalProcessed !== undefined ? totalProcessed : packets.length;
 
   return (
     <div className="bg-white border border-slate-200 rounded-lg shadow-xs overflow-hidden w-full min-w-0">
@@ -30,9 +33,14 @@ export const RealTimeTelemetryFeed: React.FC<RealTimeTelemetryFeedProps> = ({
             </span>
           </div>
         </div>
-        <span className="text-[11px] font-mono text-slate-400">
-          Showing latest {latestTen.length} / 10 packets
-        </span>
+        <div className="text-right">
+          <span className="text-[11px] font-mono text-slate-500 block">
+            LATEST {latestTen.length} / 10 PACKETS
+          </span>
+          <span className="text-[10px] font-mono font-bold text-slate-700 block">
+            TOTAL PROCESSED: {totalCount.toLocaleString()}
+          </span>
+        </div>
       </div>
 
       {/* 6-Column Simple Table */}

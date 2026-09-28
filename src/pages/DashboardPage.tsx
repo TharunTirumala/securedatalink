@@ -202,15 +202,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           {demoState === 'RUNNING' && (
             <>
               <button
-                onClick={handleStopDemo}
-                disabled={actionLoading !== null}
-                className="px-3.5 py-1.5 rounded text-xs font-bold bg-rose-700 hover:bg-rose-800 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
-                title="Stop telemetry demonstration and reset run sequence"
-              >
-                <Square className="w-3.5 h-3.5 text-rose-200 fill-current" />
-                <span>{actionLoading === 'STOPPING' ? 'STOPPING...' : 'STOP'}</span>
-              </button>
-              <button
                 onClick={handlePause}
                 disabled={actionLoading !== null}
                 className="px-3.5 py-1.5 rounded text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
@@ -219,11 +210,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <Pause className="w-3.5 h-3.5" />
                 <span>{actionLoading === 'PAUSING' ? 'PAUSING...' : 'PAUSE'}</span>
               </button>
-            </>
-          )}
-
-          {demoState === 'PAUSED' && (
-            <>
               <button
                 onClick={handleStopDemo}
                 disabled={actionLoading !== null}
@@ -233,6 +219,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <Square className="w-3.5 h-3.5 text-rose-200 fill-current" />
                 <span>{actionLoading === 'STOPPING' ? 'STOPPING...' : 'STOP'}</span>
               </button>
+            </>
+          )}
+
+          {demoState === 'PAUSED' && (
+            <>
               <button
                 onClick={handleResume}
                 disabled={actionLoading !== null}
@@ -241,6 +232,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               >
                 <Play className="w-3.5 h-3.5 text-sky-200" />
                 <span>{actionLoading === 'RESUMING' ? 'RESUMING...' : 'RESUME'}</span>
+              </button>
+              <button
+                onClick={handleStopDemo}
+                disabled={actionLoading !== null}
+                className="px-3.5 py-1.5 rounded text-xs font-bold bg-rose-700 hover:bg-rose-800 text-white shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                title="Stop telemetry demonstration and reset run sequence"
+              >
+                <Square className="w-3.5 h-3.5 text-rose-200 fill-current" />
+                <span>{actionLoading === 'STOPPING' ? 'STOPPING...' : 'STOP'}</span>
               </button>
             </>
           )}
@@ -344,6 +344,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* 4. MAIN SECTION — REAL-TIME TELEMETRY AUTHENTICATION FEED (LATEST 10 PACKETS) */}
       <RealTimeTelemetryFeed
         packets={packets}
+        totalProcessed={totalProcessed}
         simulatorActive={demoState === 'RUNNING'}
         onSelectPacket={(pkt) => setSelectedPacket(pkt)}
       />
